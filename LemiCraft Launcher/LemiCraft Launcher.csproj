@@ -10,9 +10,9 @@
     <StartupObject>LemiCraft_Launcher.Program</StartupObject>
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationIcon>Resources\logo.ico</ApplicationIcon>
-    <Version>1.6.0</Version>
-    <AssemblyVersion>1.6.0</AssemblyVersion>
-    <FileVersion>1.6.0</FileVersion>
+    <Version>1.6.1</Version>
+    <AssemblyVersion>1.6.1</AssemblyVersion>
+    <FileVersion>1.6.1</FileVersion>
     <Company>LemiCraft</Company>
     <Product>LemiCraft Launcher</Product>
     <Copyright>© 2026 LemiCraft</Copyright>

@@ -5,7 +5,7 @@
 <h3 align="center">Официальный лаунчер для Minecraft проекта LemiCraft</h3>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.6.0-blue" alt="version"/>
+  <img src="https://img.shields.io/badge/version-1.6.1-blue" alt="version"/>
   <img src="https://img.shields.io/badge/.NET-8.0-purple" alt=".NET 8"/>
   <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows"/>
 </p>
