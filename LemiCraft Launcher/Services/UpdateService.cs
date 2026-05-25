@@ -280,13 +280,18 @@ namespace LemiCraft_Launcher.Services
                     var totalEntries = archive.Entries.Count;
                     var processedEntries = 0;
 
+                    var normalizedGameDir = Path.GetFullPath(gameDir) + Path.DirectorySeparatorChar;
+
                     foreach (var entry in archive.Entries)
                     {
                         var shouldExtract = ShouldExtractEntry(entry.FullName, updateType, gameDir);
 
                         if (shouldExtract)
                         {
-                            var destinationPath = Path.Combine(gameDir, entry.FullName);
+                            var destinationPath = Path.GetFullPath(Path.Combine(gameDir, entry.FullName));
+
+                            if (!destinationPath.StartsWith(normalizedGameDir, StringComparison.OrdinalIgnoreCase))
+                                continue;
 
                             if (string.IsNullOrEmpty(entry.Name))
                                 Directory.CreateDirectory(destinationPath);

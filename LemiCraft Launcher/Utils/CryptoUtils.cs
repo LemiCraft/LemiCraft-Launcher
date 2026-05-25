@@ -16,15 +16,16 @@ namespace LemiCraft_Launcher.Utils
 
         public static string? LoadEncryptedStringFromFile(string path)
         {
+            if (!File.Exists(path)) return null;
             try
             {
-                if (!File.Exists(path)) return null;
                 var encrypted = File.ReadAllBytes(path);
                 var decrypted = ProtectedData.Unprotect(encrypted, null, DataProtectionScope.CurrentUser);
                 return Encoding.UTF8.GetString(decrypted);
             }
             catch
             {
+                try { File.Delete(path); } catch { }
                 return null;
             }
         }

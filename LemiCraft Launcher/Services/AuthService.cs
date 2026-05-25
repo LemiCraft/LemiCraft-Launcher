@@ -289,7 +289,8 @@ namespace LemiCraft_Launcher.Services
                     return refreshResult;
                 }
 
-                return new AuthResult { Success = false, ErrorMessage = "Сессия истекла. Войдите заново" };
+                Debug.WriteLine("Ely.by refresh failed, using cached profile");
+                return new AuthResult { Success = true, Profile = profile };
             }
             if (profile.Provider == "Microsoft")
             {

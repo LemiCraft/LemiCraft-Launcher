@@ -125,18 +125,23 @@ namespace LemiCraft_Launcher.Services
                 if (entry.FullName.StartsWith("mods/", StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrEmpty(entry.Name))
                 {
-                    var dest = Path.Combine(modsDir, entry.Name);
-                    entry.ExtractToFile(dest, overwrite: true);
+                    var dest = Path.GetFullPath(Path.Combine(modsDir, entry.Name));
+                    if (dest.StartsWith(Path.GetFullPath(modsDir) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                        entry.ExtractToFile(dest, overwrite: true);
                 }
                 else if (includeConfigs
                          && entry.FullName.StartsWith("config/", StringComparison.OrdinalIgnoreCase)
                          && !string.IsNullOrEmpty(entry.Name))
                 {
                     var relative = entry.FullName["config/".Length..];
-                    var dest = Path.Combine(gameDir, "config", relative);
-                    var dir = Path.GetDirectoryName(dest);
-                    if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
-                    entry.ExtractToFile(dest, overwrite: true);
+                    var dest = Path.GetFullPath(Path.Combine(gameDir, "config", relative));
+                    var configRoot = Path.GetFullPath(Path.Combine(gameDir, "config")) + Path.DirectorySeparatorChar;
+                    if (dest.StartsWith(configRoot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var dir = Path.GetDirectoryName(dest);
+                        if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+                        entry.ExtractToFile(dest, overwrite: true);
+                    }
                 }
 
                 int pct = 60 + (int)(35.0 * done / Math.Max(1, total));
