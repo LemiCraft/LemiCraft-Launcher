@@ -189,8 +189,8 @@ namespace LemiCraft_Launcher
             if (_logsWindow != null)
             {
                 _logsWindow.SetStatus("Запуск игры...", "#FFA500");
-                _logsWindow._timer.Reset();
-                _logsWindow._timer.Start();
+                _logsWindow.Timer.Reset();
+                _logsWindow.Timer.Start();
             }
 
             process.OutputDataReceived += (s, e) =>
@@ -222,7 +222,7 @@ namespace LemiCraft_Launcher
                     if (exitCode != 0)
                     {
                         _logsWindow?.SetStatus($"Краш (код {exitCode})", "#EF4444");
-                        _logsWindow?._timer.Stop();
+                        _logsWindow?.Timer.Stop();
 
                         if (config.CrashAnalyzer && config.LauncherBehavior != 1)
                             HandleMinecraftCrash(config.GamePath);
@@ -230,7 +230,7 @@ namespace LemiCraft_Launcher
                     else
                     {
                         _logsWindow?.SetStatus("Игра закрыта", "#9CA3AF");
-                        _logsWindow?._timer.Stop();
+                        _logsWindow?.Timer.Stop();
                     }
                 });
             };
@@ -324,7 +324,7 @@ namespace LemiCraft_Launcher
         private void AccountInfo_Click(object sender, MouseButtonEventArgs e)
         {
             var profile = AuthService.LoadProfile();
-            if (profile != null && PlayButton.IsEnabled)
+            if (profile != null)
                 ShowAccountMenu();
             else
                 MainFrame.Navigate(new LoginPage());
@@ -591,6 +591,7 @@ namespace LemiCraft_Launcher
             {
                 Overlay.Visibility = Visibility.Collapsed;
                 LoaderCanvas.Visibility = Visibility.Collapsed;
+                LoaderCanvas.RenderTransform?.BeginAnimation(RotateTransform.AngleProperty, null);
             };
             Overlay.BeginAnimation(OpacityProperty, fadeOut);
         }

@@ -15,7 +15,7 @@ namespace LemiCraft_Launcher
     public partial class GameLogsWindow : Window
     {
         private int _lineCount = 0;
-        public readonly Stopwatch _timer = new();
+        public readonly Stopwatch Timer = new();
         private bool _inXmlBlock = false;
         private string _xmlBuffer = "";
 
@@ -40,7 +40,7 @@ namespace LemiCraft_Launcher
 
         private void UpdateTimer()
         {
-            var elapsed = _timer.Elapsed;
+            var elapsed = Timer.Elapsed;
             TimestampText.Text = $"{elapsed.Hours:00}:{elapsed.Minutes:00}:{elapsed.Seconds:00}";
         }
 

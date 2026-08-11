@@ -150,9 +150,7 @@ namespace LemiCraft_Launcher
 
                 if (!result.Success && result.ErrorMessage != null && (result.ErrorMessage.Contains("two factor", StringComparison.OrdinalIgnoreCase) || result.ErrorMessage.Contains("Account protected", StringComparison.OrdinalIgnoreCase)))
                 {
-                    var token = Microsoft.VisualBasic.Interaction.InputBox(
-                        "У аккаунта включена двухфакторная аутентификация.\nВведите код (TOTP) и нажмите OK:",
-                        "Двухфакторная аутентификация", "");
+                    var token = TwoFactorInputWindow.RequestCode();
                     if (!string.IsNullOrWhiteSpace(token))
                     {
                         var passwordWithToken = password + ":" + token.Trim();

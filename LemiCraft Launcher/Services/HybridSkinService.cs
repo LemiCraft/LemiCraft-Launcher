@@ -289,7 +289,8 @@ namespace LemiCraft_Launcher.Services
                     return null;
                 }
 
-                var result = await response.Content.ReadFromJsonAsync<UploadFileResponse>();
+                var result = await response.Content.ReadFromJsonAsync<UploadFileResponse>(
+                    new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
                 return result?.FileUrl;
             }
             catch (Exception ex)

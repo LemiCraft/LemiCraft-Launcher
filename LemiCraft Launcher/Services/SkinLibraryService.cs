@@ -9,6 +9,10 @@ namespace LemiCraft_Launcher.Services
     public static class SkinLibraryService
     {
         private static readonly HttpClient _httpClient = new();
+        private static readonly System.Text.Json.JsonSerializerOptions JsonOptions = new()
+        {
+            PropertyNameCaseInsensitive = true
+        };
 
         private static string GetApiUrl(string endpoint)
         {
@@ -37,7 +41,7 @@ namespace LemiCraft_Launcher.Services
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
 
-                var result = await response.Content.ReadFromJsonAsync<UserSkinsResponse>();
+                var result = await response.Content.ReadFromJsonAsync<UserSkinsResponse>(JsonOptions);
                 var skins = result?.Skins ?? new List<SkinLibraryItem>();
 
                 await SkinCacheService.SaveSkinsToCache(username, skins);
@@ -74,7 +78,7 @@ namespace LemiCraft_Launcher.Services
                 var response = await _httpClient.PostAsync(GetApiUrl("upload"), content);
                 response.EnsureSuccessStatusCode();
 
-                var result = await response.Content.ReadFromJsonAsync<UploadSkinResponse>();
+                var result = await response.Content.ReadFromJsonAsync<UploadSkinResponse>(JsonOptions);
 
                 SkinCacheService.InvalidateSkinsCache(username);
 
@@ -110,7 +114,7 @@ namespace LemiCraft_Launcher.Services
                 var response = await _httpClient.PostAsJsonAsync(GetApiUrl("apply"), body);
                 response.EnsureSuccessStatusCode();
 
-                var result = await response.Content.ReadFromJsonAsync<ApplySkinResponse>();
+                var result = await response.Content.ReadFromJsonAsync<ApplySkinResponse>(JsonOptions);
                 var success = result?.Success ?? false;
 
                 if (success)
@@ -136,7 +140,7 @@ namespace LemiCraft_Launcher.Services
                 var response = await _httpClient.PostAsJsonAsync(GetApiUrl("delete"), body);
                 response.EnsureSuccessStatusCode();
 
-                var result = await response.Content.ReadFromJsonAsync<DeleteSkinResponse>();
+                var result = await response.Content.ReadFromJsonAsync<DeleteSkinResponse>(JsonOptions);
                 var success = result?.Success ?? false;
 
                 if (success)

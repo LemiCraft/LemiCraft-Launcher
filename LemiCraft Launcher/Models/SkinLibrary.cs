@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace LemiCraft_Launcher.Models
 {
     public class SkinLibraryItem
@@ -8,7 +10,10 @@ namespace LemiCraft_Launcher.Models
         public string Model { get; set; } = "steve";
         public string FileUrl { get; set; } = "";
         public string ThumbnailUrl { get; set; } = "";
+
+        [JsonPropertyName("addedAt")]
         public DateTime CreatedAt { get; set; }
+
         public bool IsActive { get; set; }
     }
 

@@ -356,9 +356,10 @@
                                Margin="0,16,0,16">
                         <TextBlock Text="⏳"
                                   FontSize="18"
-                                  Margin="0,0,10,0">
+                                  Margin="0,0,10,0"
+                                  RenderTransformOrigin="0.5,0.5">
                             <TextBlock.RenderTransform>
-                                <RotateTransform x:Name="LoadingRotation" CenterX="9" CenterY="9"/>
+                                <RotateTransform x:Name="LoadingRotation"/>
                             </TextBlock.RenderTransform>
                             <TextBlock.Triggers>
                                 <EventTrigger RoutedEvent="Loaded">

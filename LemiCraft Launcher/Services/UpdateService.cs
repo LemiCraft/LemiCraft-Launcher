@@ -158,6 +158,19 @@ namespace LemiCraft_Launcher.Services
 
                 progress?.Report((100, 0));
 
+                if (!string.IsNullOrWhiteSpace(version.Sha256Hash))
+                {
+                    var actualHash = await ComputeSha256Async(tempPath);
+                    if (!string.Equals(actualHash, version.Sha256Hash, StringComparison.OrdinalIgnoreCase))
+                    {
+                        Debug.WriteLine($"Несовпадение SHA256 для {tempPath}: ожидали {version.Sha256Hash}, получили {actualHash}");
+                        try { File.Delete(tempPath); } catch { }
+                        return false;
+                    }
+                }
+                else
+                    Debug.WriteLine("Сервер не прислал SHA256 для инсталлятора, проверка пропущена");
+
                 Process.Start(new ProcessStartInfo
                 {
                     FileName = tempPath,
@@ -460,6 +473,7 @@ namespace LemiCraft_Launcher.Services
             public bool IsRequired { get; set; }
             public long FileSize { get; set; }
             public long PortableSize { get; set; }
+            public string? Sha256 { get; set; }
 
             public LauncherVersion ToLauncherVersion() => new()
             {
@@ -471,7 +485,8 @@ namespace LemiCraft_Launcher.Services
                 Changelog = Changelog,
                 IsRequired = IsRequired,
                 FileSize = FileSize,
-                PortableSize = PortableSize
+                PortableSize = PortableSize,
+                Sha256Hash = Sha256 ?? ""
             };
         }
 

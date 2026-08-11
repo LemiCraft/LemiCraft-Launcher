@@ -38,5 +38,11 @@
     <p>Привет, <b>{{USERNAME}}</b></p>
     <p style="opacity:.7">Эту вкладку можно закрыть</p>
   </div>
+  <script>
+    window.close();
+    setTimeout(function () {
+        try { window.close(); } catch (e) { }
+    }, 100);
+    </script>
 </body>
 </html>

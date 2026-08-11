@@ -320,10 +320,64 @@ namespace LemiCraft_Launcher.Services
             return new AuthResult { Success = false, ErrorMessage = "Сессия устарела. Войдите заново" };
         }
 
+        /// <summary>
+        /// Пытается определить, какой процесс занимает указанный TCP-порт (Windows, через netstat).
+        /// Возвращает имя процесса или null, если определить не удалось.
+        /// </summary>
+        private static string? TryFindPortOwner(int port)
+        {
+            try
+            {
+                if (!OperatingSystem.IsWindows()) return null;
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "netstat",
+                    Arguments = "-ano -p TCP",
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+
+                using var proc = Process.Start(psi);
+                if (proc == null) return null;
+
+                var output = proc.StandardOutput.ReadToEnd();
+                proc.WaitForExit(2000);
+
+                foreach (var line in output.Split('\n'))
+                {
+                    var trimmed = line.Trim();
+                    if (!trimmed.StartsWith("TCP", StringComparison.OrdinalIgnoreCase)) continue;
+                    if (!trimmed.Contains($":{port} ") && !trimmed.Contains($":{port}\t")) continue;
+                    if (!trimmed.Contains("LISTENING", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    var parts = trimmed.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    var localAddr = parts.Length > 1 ? parts[1] : "";
+                    if (!localAddr.EndsWith($":{port}")) continue;
+
+                    var pidStr = parts[^1];
+                    if (!int.TryParse(pidStr, out var pid)) continue;
+
+                    try
+                    {
+                        using var owner = Process.GetProcessById(pid);
+                        return owner.ProcessName;
+                    }
+                    catch { return null; }
+                }
+
+                return null;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         public static async Task<AuthResult> LoginElyByOAuthAsync(Action<string>? showMessageCallback = null)
         {
             var cfg = ConfigService.Load();
-
             var apiBaseUrl = cfg.ApiBaseUrl;
 
             try
@@ -331,11 +385,7 @@ namespace LemiCraft_Launcher.Services
                 var urlResponse = await _httpClient.GetAsync($"{apiBaseUrl}/auth/ely/url");
                 if (!urlResponse.IsSuccessStatusCode)
                 {
-                    return new AuthResult
-                    {
-                        Success = false,
-                        ErrorMessage = "Не удалось получить OAuth URL с сервера"
-                    };
+                    return new AuthResult { Success = false, ErrorMessage = "Не удалось получить OAuth URL с сервера" };
                 }
 
                 var urlJson = await urlResponse.Content.ReadAsStringAsync();
@@ -348,25 +398,25 @@ namespace LemiCraft_Launcher.Services
 
                 if (!Uri.TryCreate(redirectUri, UriKind.Absolute, out var redirectUriParsed))
                 {
-                    return new AuthResult
-                    {
-                        Success = false,
-                        ErrorMessage = "Некорректный redirect URI"
-                    };
+                    return new AuthResult { Success = false, ErrorMessage = "Некорректный redirect URI" };
                 }
 
                 int port = redirectUriParsed.Port;
 
                 using var listener = new HttpListener();
-                var prefix = $"http://localhost:{port}/";
-                listener.Prefixes.Add(prefix);
+                listener.Prefixes.Add($"http://localhost:{port}/");
                 try
                 {
                     listener.Start();
                 }
-                catch (Exception ex)
+                catch
                 {
-                    return new AuthResult { Success = false, ErrorMessage = $"Не удалось запустить локальный сервер: {ex.Message}" };
+                    var blocker = TryFindPortOwner(port);
+                    var hint = blocker != null
+                        ? $"Порт {port} занят приложением \"{blocker}\". Закройте его и попробуйте снова, либо перезагрузите компьютер"
+                        : $"Порт {port} занят другим приложением на вашем компьютере. Закройте лишние программы (антивирус, другие лаунчеры, торрент-клиенты) или перезагрузите компьютер и попробуйте снова";
+
+                    return new AuthResult { Success = false, ErrorMessage = $"Не удалось запустить локальный сервер для входа: {hint}" };
                 }
 
                 try
@@ -482,70 +532,5 @@ namespace LemiCraft_Launcher.Services
             }
         }
 
-        public static async Task<AuthResult> ExchangeElyOAuthCodeAsync(string clientId, string clientSecret, string redirectUri, string code)
-        {
-            try
-            {
-                var form = new Dictionary<string, string>
-                {
-                    ["client_id"] = clientId,
-                    ["client_secret"] = clientSecret,
-                    ["redirect_uri"] = redirectUri,
-                    ["grant_type"] = "authorization_code",
-                    ["code"] = code
-                };
-
-                using var content = new FormUrlEncodedContent(form);
-                var resp = await _httpClient.PostAsync("https://account.ely.by/api/oauth2/v1/token", content);
-                var body = await resp.Content.ReadAsStringAsync();
-
-                if (!resp.IsSuccessStatusCode)
-                {
-                    try
-                    {
-                        using var errDoc = JsonDocument.Parse(body);
-                        var root = errDoc.RootElement;
-                        if (root.TryGetProperty("error", out var e))
-                            return new AuthResult { Success = false, ErrorMessage = e.GetString() ?? "Ошибка обмена кода" };
-                    }
-                    catch { }
-
-                    return new AuthResult { Success = false, ErrorMessage = $"Ошибка обмена кода: {resp.StatusCode}" };
-                }
-
-                using var doc = JsonDocument.Parse(body);
-                var rootElem = doc.RootElement;
-                var accessToken = rootElem.GetProperty("access_token").GetString() ?? "";
-
-                var request = new HttpRequestMessage(HttpMethod.Get, "https://account.ely.by/api/account/v1/info");
-                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", accessToken);
-                var userResp = await _httpClient.SendAsync(request);
-                if (!userResp.IsSuccessStatusCode)
-                    return new AuthResult { Success = false, ErrorMessage = "Не удалось получить информацию о пользователе" };
-
-                var userJson = await userResp.Content.ReadAsStringAsync();
-                using var userDoc = JsonDocument.Parse(userJson);
-                var userRoot = userDoc.RootElement;
-
-                var username = userRoot.GetProperty("username").GetString() ?? "";
-                var uuid = userRoot.TryGetProperty("uuid", out var uu) ? uu.GetString() ?? "" : "";
-
-                var profile = new UserProfile
-                {
-                    Username = username,
-                    AccessToken = accessToken,
-                    ClientToken = Guid.NewGuid().ToString("N"),
-                    Uuid = uuid,
-                    Provider = "Ely.by",
-                    LastLogin = DateTime.Now
-                };
-
-                return new AuthResult { Success = true, Profile = profile };
-            }
-            catch (Exception ex)
-            {
-                return new AuthResult { Success = false, ErrorMessage = "Ошибка OAuth обмена Ely.by: " + ex.Message };
-            }
-        }
     }
 }
