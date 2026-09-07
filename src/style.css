@@ -1,0 +1,116 @@
+@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+
+:root {
+  --bg: #141317;
+  --bg-sidebar: #19181d;
+  --surface: #201f24;
+  --surface-2: #28262d;
+  --surface-hover: #2e2c33;
+  --border: #322f37;
+  --text: #f3f1f4;
+  --text-muted: #9a95a1;
+  --text-faint: #6b6670;
+
+  --accent: #ff5f5f;
+  --accent-hover: #ff7373;
+  --accent-soft: rgba(255, 95, 95, 0.14);
+  --accent-text-on: #1a0f0f;
+
+  --gold: #e7c873;
+  --gold-soft: rgba(231, 200, 115, 0.14);
+
+  --good: #22c55e;
+  --good-soft: rgba(34, 197, 94, 0.14);
+  --bad: #ef4444;
+  --bad-soft: rgba(239, 68, 68, 0.14);
+  --info: #3b82f6;
+  --info-soft: rgba(59, 130, 246, 0.14);
+  --event: #a78bfa;
+  --event-soft: rgba(167, 139, 250, 0.14);
+
+  --radius-lg: 20px;
+  --radius-md: 14px;
+  --radius-sm: 9px;
+
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 30px -12px rgba(0, 0, 0, 0.55);
+  --shadow-pop: 0 20px 60px -20px rgba(0, 0, 0, 0.65);
+
+  --font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+#app {
+  height: 100vh;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  margin: 0;
+  letter-spacing: -0.01em;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font-family: inherit;
+}
+
+button:focus,
+button:focus-visible,
+a:focus,
+a:focus-visible {
+  outline: none;
+}
+
+::selection {
+  background: var(--accent);
+  color: var(--accent-text-on);
+}
+
+/* scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-2) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--surface-hover);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
