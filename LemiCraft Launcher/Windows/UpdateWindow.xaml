@@ -136,17 +136,23 @@
                             <ItemsControl x:Name="ChangelogList">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                            <Border Width="5" Height="5" CornerRadius="2.5"
+                                        <Grid Margin="0,0,0,6">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Border Grid.Column="0"
+                                                    Width="5" Height="5" CornerRadius="2.5"
                                                     Background="#3B82F6"
                                                     Margin="0,7,10,0"
                                                     VerticalAlignment="Top"/>
-                                            <TextBlock Text="{Binding}"
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding}"
                                                        Foreground="#CBD5E1"
                                                        FontSize="13"
                                                        TextWrapping="Wrap"
                                                        LineHeight="20"/>
-                                        </StackPanel>
+                                        </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
