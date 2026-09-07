@@ -132,9 +132,23 @@ pub async fn download_and_install_update(app: AppHandle, download_url: String, s
 
         let _ = app.emit("update-progress", serde_json::json!({ "percent": 100, "bytes": downloaded }));
 
-        // NSIS silent-install flag — the old launcher's Inno Setup flags (/SILENT etc.) don't apply here
+        // NSIS silent-install flag — the old launcher's Inno Setup flags (/SILENT etc.) don't apply here.
+        // DETACHED_PROCESS: without it the installer stays in this process's tree, and its own
+        // CheckIfAppIsRunning step (which kills this app before installing) took the installer
+        // down with it as a child — confirmed live, the installer never got to finish
         #[cfg(windows)]
-        std::process::Command::new(&temp_path).arg("/S").spawn().map_err(|err| err.to_string())?;
+        {
+            use std::os::windows::process::CommandExt;
+            const DETACHED_PROCESS: u32 = 0x00000008;
+            // /R: Tauri's NSIS template relaunches the app after a silent install completes —
+            // without it the update finishes with no launcher window open at all
+            std::process::Command::new(&temp_path)
+                .arg("/S")
+                .arg("/R")
+                .creation_flags(DETACHED_PROCESS)
+                .spawn()
+                .map_err(|err| err.to_string())?;
+        }
         #[cfg(not(windows))]
         open::that(&temp_path).map_err(|err| err.to_string())?;
 
