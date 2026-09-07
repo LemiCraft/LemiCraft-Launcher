@@ -1,10 +1,10 @@
 [package]
 name = "app"
-version = "2.0.0"
+version = "2.0.1"
 description = "LemiCraft Launcher — Tauri + Vue launcher for lemicraft.ru"
 authors = ["KOTOKOPOLb"]
 license = "MIT"
-repository = "https://github.com/KOTOKOPOLb/LemiCraft-Launcher"
+repository = "https://github.com/LemiCraft/LemiCraft-Launcher"
 homepage = "https://lemicraft.ru"
 edition = "2024"
 rust-version = "1.95"
