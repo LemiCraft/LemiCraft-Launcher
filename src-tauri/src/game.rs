@@ -8,9 +8,20 @@ use tauri::{AppHandle, Emitter, Manager};
 #[derive(Default)]
 pub struct GameProcess(pub Arc<Mutex<Option<Child>>>);
 
+// Live "game-log" events only reach windows already listening; this backs a logs window opened after a crash
+const LOG_BUFFER_CAP: usize = 3000;
+
+#[derive(Default)]
+pub struct GameLogBuffer(pub Arc<Mutex<std::collections::VecDeque<String>>>);
+
 #[tauri::command]
 pub fn is_game_running(process: tauri::State<GameProcess>) -> bool {
     process.0.lock().map(|guard| guard.is_some()).unwrap_or(false)
+}
+
+#[tauri::command]
+pub fn get_log_buffer(buffer: tauri::State<GameLogBuffer>) -> Vec<String> {
+    buffer.0.lock().map(|guard| guard.iter().cloned().collect()).unwrap_or_default()
 }
 
 fn current_log_path() -> PathBuf {
@@ -50,6 +61,7 @@ pub fn stop_game(app: AppHandle, process: tauri::State<GameProcess>) -> Result<(
 
     // spawn_with_log_streaming's wait loop finds the slot already empty and exits silently
     let _ = app.emit("game-stopped", ());
+    crate::discord_rpc::set_idle(&app);
     restore_main_window(&app, &crate::settings::load().on_launch);
 
     result
@@ -166,6 +178,16 @@ fn run(app: &AppHandle, username: String, process: Arc<Mutex<Option<Child>>>) ->
             fabric::GameVersion::Name(crate::config::MC_VERSION.to_string()),
             fabric::LoaderVersion::Name(crate::config::FABRIC_LOADER.to_string()),
         );
+
+        // Skips Mojang's manifest request (no timeout in portablemc: a throttled VPN hangs the launch on it),
+        // but only once both version jsons are on disk — it's also how a missing one gets downloaded,
+        // so excluding it on a fresh install would leave the game uninstallable
+        let versions_dir = minecraft_dir().join("versions");
+        let has_version_json = |name: &str| versions_dir.join(name).join(format!("{name}.json")).is_file();
+        let fabric_root = format!("fabric-{}-{}", crate::config::MC_VERSION, crate::config::FABRIC_LOADER);
+        if has_version_json(crate::config::MC_VERSION) && has_version_json(&fabric_root) {
+            installer.mojang_mut().add_fetch_exclude(moj::FetchExclude::All);
+        }
 
         // Built as an offline session with the real uuid/username, then the real access token is patched in below
         let real_session = crate::auth::load_current_session_full();
@@ -320,12 +342,19 @@ fn spawn_with_log_streaming(
 
     let mut child = command.spawn().map_err(|err| err.to_string())?;
 
+    let log_buffer = app.state::<GameLogBuffer>().0.clone();
+    if let Ok(mut guard) = log_buffer.lock() {
+        guard.clear();
+    }
+
     if let Some(stdout) = child.stdout.take() {
         let app = app.clone();
+        let log_buffer = log_buffer.clone();
         std::thread::spawn(move || {
             let mut filter = XmlLogFilter::new();
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if let Some(cleaned) = filter.feed(&line) {
+                    push_to_buffer(&log_buffer, &cleaned);
                     let _ = app.emit("game-log", cleaned);
                 }
             }
@@ -334,10 +363,12 @@ fn spawn_with_log_streaming(
 
     if let Some(stderr) = child.stderr.take() {
         let app = app.clone();
+        let log_buffer = log_buffer.clone();
         std::thread::spawn(move || {
             let mut filter = XmlLogFilter::new();
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 if let Some(cleaned) = filter.feed(&line) {
+                    push_to_buffer(&log_buffer, &cleaned);
                     let _ = app.emit("game-log", cleaned);
                 }
             }
@@ -346,6 +377,7 @@ fn spawn_with_log_streaming(
 
     *process.lock().map_err(|_| "Не удалось сохранить процесс игры".to_string())? = Some(child);
     let _ = app.emit("game-started", ());
+    crate::discord_rpc::set_playing(app);
 
     match on_launch {
         "close" => app.exit(0),
@@ -371,6 +403,7 @@ fn spawn_with_log_streaming(
                     *guard = None;
                     drop(guard);
                     let _ = app.emit("game-stopped", ());
+                    crate::discord_rpc::set_idle(&app);
                     if !status.success() {
                         let _ = app.emit("game-crashed", status.code());
                     }
@@ -382,6 +415,7 @@ fn spawn_with_log_streaming(
                     *guard = None;
                     drop(guard);
                     let _ = app.emit("game-stopped", ());
+                    crate::discord_rpc::set_idle(&app);
                     restore_main_window(&app, &on_launch);
                     break;
                 }
@@ -399,6 +433,15 @@ fn restore_main_window(app: &AppHandle, on_launch: &str) {
             let _ = window.show();
             let _ = window.set_focus();
         }
+    }
+}
+
+fn push_to_buffer(buffer: &Arc<Mutex<std::collections::VecDeque<String>>>, line: &str) {
+    if let Ok(mut guard) = buffer.lock() {
+        if guard.len() >= LOG_BUFFER_CAP {
+            guard.pop_front();
+        }
+        guard.push_back(line.to_string());
     }
 }
 

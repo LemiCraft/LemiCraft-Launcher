@@ -1,12 +1,15 @@
 mod auth;
 mod auth_ely;
 mod config;
+mod discord_rpc;
 #[cfg(windows)]
 mod dpapi;
 mod game;
 mod mods;
 mod news;
 mod rules;
+#[cfg(not(windows))]
+mod secret;
 mod server_list;
 mod server_status;
 mod settings;
@@ -51,6 +54,8 @@ async fn open_logs_window(app: tauri::AppHandle) -> Result<(), String> {
 pub fn run() {
   tauri::Builder::default()
     .manage(game::GameProcess::default())
+    .manage(game::GameLogBuffer::default())
+    .manage(discord_rpc::DiscordRpc::default())
     .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
       if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -98,6 +103,8 @@ pub fn run() {
         }
       }
 
+      discord_rpc::start(app.handle().clone());
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -105,6 +112,8 @@ pub fn run() {
       game::stop_game,
       game::is_game_running,
       game::read_current_log,
+      game::get_log_buffer,
+      discord_rpc::set_discord_page,
       game::move_game_files,
       auth::login_microsoft,
       auth_ely::login_elyby,
@@ -147,7 +156,9 @@ pub fn run() {
       mods::export_mod_selection,
       mods::preview_import_code,
       mods::install_mods,
-      mods::apply_import_extras,
+      mods::apply_import_bundle,
+      mods::uninstall_import_bundle,
+      mods::get_installed_import_bundle,
       mods::uninstall_mod,
       mods::get_official_pack,
       mods::get_installed_official_pack_version,

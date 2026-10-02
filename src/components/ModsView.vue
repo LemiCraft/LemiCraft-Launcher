@@ -10,6 +10,8 @@ import {
   uninstallModId,
   previewImportCode,
   applyImportCode,
+  uninstallImportBundle,
+  loadInstalledImportBundle,
   isPackOnly,
 } from '../store/mods.js';
 import { formatFileSize } from '../utils/format.js';
@@ -76,7 +78,10 @@ async function onToggleCard(entry) {
   if (!isInstalled(entry) && conflictingNames(entry).length) return;
 
   if (isInstalled(entry) && isPackOnly(entry.id)) {
-    pushNotification('Этот мод входит в сборку LemiSborka — уберите всю сборку целиком в её карточке выше', 'error');
+    const msg = modsState.installedImportModIds.includes(entry.id)
+      ? 'Этот мод входит в импортированный набор — уберите его целиком ниже'
+      : 'Этот мод входит в сборку LemiSborka — уберите всю сборку целиком в её карточке выше';
+    pushNotification(msg, 'error');
     return;
   }
 
@@ -166,10 +171,30 @@ async function onApplyImport() {
   const ids = importPreview.value?.items.filter((i) => i.resolved).map((i) => i.id) ?? [];
   if (ids.length === 0 || modsState.applying) return;
   try {
-    await applyImportCode(importCode.value.trim(), ids, importPreview.value?.configs);
-    pushNotification('Сборка установлена');
+    await applyImportCode(importCode.value.trim(), ids);
+    pushNotification('Набор установлен');
     importPreview.value = null;
     importCode.value = '';
+  } catch (err) {
+    pushNotification(String(err), 'error');
+  }
+}
+
+async function onRemoveImportBundle() {
+  try {
+    if (window.__TAURI_INTERNALS__) {
+      const choice = await showConfirmDialog({
+        title: 'Удалить набор?',
+        message: 'Удалить все файлы импортированного набора?',
+        buttons: [
+          { label: 'Да', value: true, variant: 'danger' },
+          { label: 'Нет', value: false, variant: 'ghost' },
+        ],
+      });
+      if (!choice) return;
+    }
+    await uninstallImportBundle();
+    pushNotification('Набор удалён');
   } catch (err) {
     pushNotification(String(err), 'error');
   }
@@ -178,7 +203,7 @@ async function onApplyImport() {
 async function onRefresh() {
   refreshing.value = true;
   try {
-    await Promise.all([loadModCatalog({ force: true }), loadOfficialPack()]);
+    await Promise.all([loadModCatalog({ force: true }), loadOfficialPack(), loadInstalledImportBundle()]);
   } finally {
     refreshing.value = false;
   }
@@ -187,6 +212,7 @@ async function onRefresh() {
 onMounted(() => {
   loadModCatalog();
   loadOfficialPack();
+  loadInstalledImportBundle();
   nextTick(onScroll);
 });
 
@@ -257,6 +283,10 @@ watch(
             </button>
           </div>
           <p v-if="importError" class="error-text">{{ importError }}</p>
+          <div v-if="modsState.installedImportModIds.length && !importPreview" class="import-installed-row">
+            <span>Установлен набор из {{ modsState.installedImportModIds.length }} модов</span>
+            <button class="pack-remove-btn" :disabled="modsState.applying" @click="onRemoveImportBundle">Удалить</button>
+          </div>
           <div class="import-preview-wrap" :class="{ expanded: !!importPreview }">
             <div class="import-preview-inner">
               <div v-if="importPreview" class="import-preview">
@@ -598,6 +628,19 @@ watch(
 .secondary-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+.import-installed-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  color: var(--text-muted);
 }
 
 .import-preview-wrap {

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
+// Top-level fields are the Windows release (read by every shipped launcher); other platforms sit under `platforms`
 #[derive(Deserialize)]
 struct VersionApiResponse {
     success: bool,
@@ -16,6 +17,24 @@ struct VersionApiResponse {
     is_required: bool,
     #[serde(rename = "releaseDate", default)]
     release_date: Option<String>,
+    // Kept raw: only this OS' entry is parsed, so a malformed entry for another platform can't break the check
+    #[serde(default)]
+    platforms: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize)]
+struct PlatformRelease {
+    version: String,
+    #[serde(rename = "downloadUrl")]
+    download_url: String,
+    #[serde(rename = "fileSize", default)]
+    file_size: u64,
+    #[serde(default)]
+    sha256: Option<String>,
+    #[serde(default)]
+    changelog: Vec<String>,
+    #[serde(rename = "releaseDate", default)]
+    release_date: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -27,6 +46,36 @@ pub struct UpdateInfo {
     changelog: Vec<String>,
     is_required: bool,
     release_date: Option<String>,
+    // No in-app installer on this platform — the UI just opens download_url in the browser
+    manual: bool,
+}
+
+fn pick_update(parsed: VersionApiResponse) -> Option<UpdateInfo> {
+    if cfg!(windows) {
+        return Some(UpdateInfo {
+            version: parsed.version,
+            download_url: parsed.download_url,
+            file_size: parsed.file_size,
+            sha256: parsed.sha256,
+            changelog: parsed.changelog,
+            is_required: parsed.is_required,
+            release_date: parsed.release_date,
+            manual: false,
+        });
+    }
+    let entry = parsed.platforms?.get(std::env::consts::OS)?.clone();
+    let release: PlatformRelease = serde_json::from_value(entry).ok()?;
+    Some(UpdateInfo {
+        version: release.version,
+        download_url: release.download_url,
+        file_size: release.file_size,
+        sha256: release.sha256,
+        changelog: release.changelog,
+        // There's nothing to force on a platform with no installer, whatever the server says
+        is_required: false,
+        release_date: release.release_date,
+        manual: true,
+    })
 }
 
 // Dot-split integer comparison, not semver-aware — matches the old launcher's own check.
@@ -68,18 +117,10 @@ pub async fn check_for_update(current_version: String) -> Result<Option<UpdateIn
             return Ok(None);
         }
         let parsed: VersionApiResponse = res.json().map_err(|err| err.to_string())?;
-        if !parsed.success || !is_newer_version(&parsed.version, &current_version) {
+        if !parsed.success {
             return Ok(None);
         }
-        Ok(Some(UpdateInfo {
-            version: parsed.version,
-            download_url: parsed.download_url,
-            file_size: parsed.file_size,
-            sha256: parsed.sha256,
-            changelog: parsed.changelog,
-            is_required: parsed.is_required,
-            release_date: parsed.release_date,
-        }))
+        Ok(pick_update(parsed).filter(|info| is_newer_version(&info.version, &current_version)))
     })
     .await
     .map_err(|err| err.to_string())?
@@ -132,22 +173,29 @@ pub async fn download_and_install_update(app: AppHandle, download_url: String, s
 
         let _ = app.emit("update-progress", serde_json::json!({ "percent": 100, "bytes": downloaded }));
 
-        // NSIS silent-install flag — the old launcher's Inno Setup flags (/SILENT etc.) don't apply here.
-        // DETACHED_PROCESS alone wasn't enough (confirmed live) — it only detaches the console, not
-        // Job Object membership, so a kill-on-close job (likely from WebView2) still took the installer down
+        // Confirmed live: an installer spawned by the running launcher dies with it (its CheckIfAppIsRunning step),
+        // even detached/breakaway — so the app exits first via a detached helper instead
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
             const DETACHED_PROCESS: u32 = 0x00000008;
             const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x01000000;
-            // /R: Tauri's NSIS template relaunches the app after a silent install completes —
-            // without it the update finishes with no launcher window open at all
-            std::process::Command::new(&temp_path)
-                .arg("/S")
-                .arg("/R")
+
+            let script_path = std::env::temp_dir().join("lemicraft_update_helper.bat");
+            // ping as the delay (`timeout` needs a console). Pure ASCII on purpose: cmd reads a .bat in the OEM code
+            // page, which mangles a Cyrillic path, so the installer path is passed as an argument instead
+            std::fs::write(&script_path, "@echo off\r\nping 127.0.0.1 -n 3 >nul\r\nstart \"\" /B %1 /S /R\r\n")
+                .map_err(|err| err.to_string())?;
+
+            std::process::Command::new("cmd")
+                .arg("/C")
+                .raw_arg(format!("\"\"{}\" \"{}\"\"", script_path.display(), temp_path.display()))
                 .creation_flags(DETACHED_PROCESS | CREATE_BREAKAWAY_FROM_JOB)
                 .spawn()
                 .map_err(|err| err.to_string())?;
+
+            let _ = app.emit("update-progress", serde_json::json!({ "percent": 100, "restarting": true }));
+            app.exit(0);
         }
         #[cfg(not(windows))]
         open::that(&temp_path).map_err(|err| err.to_string())?;

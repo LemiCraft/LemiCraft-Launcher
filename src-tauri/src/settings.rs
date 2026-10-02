@@ -22,6 +22,8 @@ pub struct LauncherSettings {
     pub show_logs: bool,
     #[serde(default = "default_true")]
     pub crash_analyzer: bool,
+    #[serde(default = "default_true")]
+    pub discord_rpc: bool,
 }
 
 fn default_ram_gb() -> u32 {
@@ -50,6 +52,7 @@ impl Default for LauncherSettings {
             game_dir: None,
             show_logs: false,
             crash_analyzer: true,
+            discord_rpc: true,
         }
     }
 }
@@ -83,8 +86,11 @@ pub fn get_settings() -> LauncherSettings {
 }
 
 #[tauri::command]
-pub fn save_settings(settings: LauncherSettings) -> Result<(), String> {
+pub fn save_settings(app: tauri::AppHandle, settings: LauncherSettings) -> Result<(), String> {
     fs::create_dir_all(game_dir()).map_err(|err| err.to_string())?;
     let json = serde_json::to_string_pretty(&settings).map_err(|err| err.to_string())?;
-    fs::write(settings_path(), json).map_err(|err| err.to_string())
+    fs::write(settings_path(), json).map_err(|err| err.to_string())?;
+    // Applies a toggle flip right away (clears or restores the live activity) instead of on the next event
+    crate::discord_rpc::refresh(&app);
+    Ok(())
 }

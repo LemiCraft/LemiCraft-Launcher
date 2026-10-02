@@ -21,6 +21,7 @@ const onLaunch = ref('hide');
 const autoConnect = ref(false);
 const showLogs = ref(false);
 const crashAnalyzer = ref(true);
+const discordRpc = ref(true);
 const gameDir = ref(null);
 const defaultGameDir = ref('');
 const ramDragging = ref(false);
@@ -144,6 +145,7 @@ onMounted(async () => {
   autoConnect.value = settings.auto_connect;
   showLogs.value = settings.show_logs;
   crashAnalyzer.value = settings.crash_analyzer;
+  discordRpc.value = settings.discord_rpc;
   gameDir.value = settings.game_dir;
   defaultGameDir.value = await invoke('get_default_game_dir');
   invoke('get_total_ram_gb').then((total) => {
@@ -157,7 +159,7 @@ onMounted(async () => {
 });
 
 let saveTimer = null;
-watch([ram, jvmArgs, onLaunch, autoConnect, showLogs, crashAnalyzer, gameDir], () => {
+watch([ram, jvmArgs, onLaunch, autoConnect, showLogs, crashAnalyzer, discordRpc, gameDir], () => {
   if (!settingsLoaded.value || !window.__TAURI_INTERNALS__) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
@@ -170,6 +172,7 @@ watch([ram, jvmArgs, onLaunch, autoConnect, showLogs, crashAnalyzer, gameDir], (
         auto_connect: autoConnect.value,
         show_logs: showLogs.value,
         crash_analyzer: crashAnalyzer.value,
+        discord_rpc: discordRpc.value,
         game_dir: gameDir.value,
       },
     });
@@ -299,6 +302,15 @@ onUnmounted(() => {
           <span class="row-sub">Открывать окно логов, если игра завершилась аварийно</span>
         </div>
         <button class="toggle" :class="{ on: crashAnalyzer }" @click="crashAnalyzer = !crashAnalyzer">
+          <span class="knob"></span>
+        </button>
+      </div>
+      <div class="row">
+        <div class="row-text">
+          <span class="row-title">Discord Rich Presence</span>
+          <span class="row-sub">Показывать в статусе Discord, что вы играете на LemiCraft</span>
+        </div>
+        <button class="toggle" :class="{ on: discordRpc }" @click="discordRpc = !discordRpc">
           <span class="knob"></span>
         </button>
       </div>

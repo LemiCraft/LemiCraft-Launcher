@@ -30,6 +30,19 @@ let unlistenProgress = null;
 
 export async function startUpdateDownload() {
   if (!updateState.info || updateState.downloading) return;
+
+  if (updateState.info.manual) {
+    updateState.error = '';
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('open_external', { target: updateState.info.download_url });
+      updateState.available = false;
+    } catch (err) {
+      updateState.error = String(err);
+    }
+    return;
+  }
+
   updateState.downloading = true;
   updateState.error = '';
   updateState.percent = null;

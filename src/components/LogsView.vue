@@ -63,19 +63,17 @@ onMounted(async () => {
   const { invoke } = await import('@tauri-apps/api/core');
   const { listen } = await import('@tauri-apps/api/event');
 
-  // The window may open mid-session (game already running) — catch up on what stdout
-  // piping alone would've missed by reading Minecraft's own log file once up front.
+  // The window can open mid-session or after the game exited (crash) — the backend ring buffer covers both
   try {
     if (await invoke('is_game_running')) {
       handleGameStarted();
-      const history = await invoke('read_current_log');
-      const historyLines = history.split('\n').filter((text) => text.length > 0);
-      lines.value = historyLines.map((text) => ({ text, level: classifyLine(text) }));
-      if (lines.value.length > MAX_LINES) lines.value.splice(0, lines.value.length - MAX_LINES);
-      nextTick(() => {
-        if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight;
-      });
     }
+    const history = await invoke('get_log_buffer');
+    lines.value = history.map((text) => ({ text, level: classifyLine(text) }));
+    if (lines.value.length > MAX_LINES) lines.value.splice(0, lines.value.length - MAX_LINES);
+    nextTick(() => {
+      if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight;
+    });
   } catch {}
 
   unlistenLog = await listen('game-log', (event) => {
@@ -102,9 +100,12 @@ onUnmounted(() => {
   clearInterval(tickTimer);
 });
 
+// Smooth scrolling fires onScroll far from the bottom, which would flip autoScroll off and flash the button back
+let smoothScrolling = false;
+
 function onScroll() {
   const el = scrollEl.value;
-  if (!el) return;
+  if (!el || smoothScrolling) return;
   autoScroll.value = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
 }
 
@@ -114,7 +115,11 @@ function clearLogs() {
 
 function scrollToBottom() {
   autoScroll.value = true;
-  if (scrollEl.value) scrollEl.value.scrollTop = scrollEl.value.scrollHeight;
+  if (scrollEl.value) {
+    smoothScrolling = true;
+    setTimeout(() => (smoothScrolling = false), 600);
+    scrollEl.value.scrollTo({ top: scrollEl.value.scrollHeight, behavior: 'smooth' });
+  }
 }
 
 async function copyLogs() {
@@ -138,7 +143,9 @@ async function copyLogs() {
       </div>
       <div class="head-actions">
         <button class="upload-btn" :disabled="lines.length === 0" @click="copyLogs">
-          {{ copyState === 'success' ? 'Скопировано' : copyState === 'error' ? 'Не удалось' : 'Копировать' }}
+          <Transition name="fade" mode="out-in">
+            <span :key="copyState">{{ copyState === 'success' ? 'Скопировано' : copyState === 'error' ? 'Не удалось' : 'Копировать' }}</span>
+          </Transition>
         </button>
         <button class="upload-btn danger" :disabled="!isRunning" @click="stopGame">Стоп</button>
         <button class="upload-btn" @click="clearLogs">Очистить</button>
@@ -150,10 +157,12 @@ async function copyLogs() {
         <p v-if="lines.length === 0" class="empty">Пока пусто — запустите игру, чтобы увидеть лог здесь</p>
         <p v-for="(line, i) in lines" :key="i" class="line" :class="line.level">{{ line.text }}</p>
       </div>
-      <button v-if="!autoScroll && lines.length > 0" class="scroll-bottom-btn" @click="scrollToBottom">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 16 5 9l1.4-1.4L12 13.2l5.6-5.6L19 9Z"/></svg>
-        К низу
-      </button>
+      <Transition name="pop">
+        <button v-if="!autoScroll && lines.length > 0" class="scroll-bottom-btn" @click="scrollToBottom">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 16 5 9l1.4-1.4L12 13.2l5.6-5.6L19 9Z"/></svg>
+          К низу
+        </button>
+      </Transition>
     </div>
   </div>
 </template>
@@ -249,6 +258,25 @@ async function copyLogs() {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 14px 16px;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
+.pop-enter-active,
+.pop-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.pop-enter-from,
+.pop-leave-to {
+  opacity: 0;
+  transform: translate(-50%, 8px);
 }
 
 .scroll-bottom-btn {

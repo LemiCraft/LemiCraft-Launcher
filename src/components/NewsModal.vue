@@ -22,11 +22,11 @@ onMounted(() => nextTick(onScroll));
 
 const blocks = computed(() => parseBlocks(props.item.content, props.item.title).map((b) => ({
   ...b,
-  lines: b.lines?.map(parseInline),
-  inline: b.text != null ? parseInline(b.text) : undefined,
+  lines: b.lines?.map((line) => parseInline(line, props.item.mentions)),
+  inline: b.text != null ? parseInline(b.text, props.item.mentions) : undefined,
 })));
 
-const titleParts = computed(() => parseInline(replaceDiscordTimestamps(props.item.title || '')));
+const titleParts = computed(() => parseInline(replaceDiscordTimestamps(props.item.title || ''), props.item.mentions));
 
 const fullDate = computed(() => {
   const d = new Date(props.item.rawDate || props.item.date);

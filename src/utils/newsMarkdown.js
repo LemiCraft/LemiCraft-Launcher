@@ -1,7 +1,7 @@
 const DISCORD_TS_RE = /<t:(\d+)(?::([tTdDfFRsS]))?>/g;
-// A role mention is "@<emoji><Role Name>" and the name can contain spaces with no delimiter —
-// an emoji right after "@" means "role mention", so one extra capitalized word is swept in
-const MENTION_RE = /@(?:\p{Extended_Pictographic}\u{FE0F}?[^\s,.!?;:)(]*(?:\s+\p{Lu}[^\s,.!?;:)(]*)?|[^\s,.!?;:)(]+)/gu;
+// A role mention is "@<emoji><Role Name>". A second capitalized word ("Министр Счастья") isn't swept in:
+// it swallowed the start of the next sentence ("@Лемимист Через 8 минут..."), confirmed live
+const MENTION_RE = /@(?:\p{Extended_Pictographic}\u{FE0F}?[^\s,.!?;:)(]*|[^\s,.!?;:)(]+)/gu;
 // https only — open_external() (the only way these links get opened) now rejects plain http,
 // so linkifying it would render a clickable link that silently fails when clicked
 const URL_RE = /https:\/\/[^\s<>"]+[^\s<>".,;!?)\]']/gi;
@@ -121,12 +121,12 @@ function parseInlineStyles(text) {
   return parts;
 }
 
-function tokenizeSegment(text) {
+function tokenizeSegment(text, mentions) {
   const tokens = [];
   let lastIndex = 0;
   const matches = [...text.matchAll(URL_RE)].map((m) => ({ ...m, kind: 'url' }));
   for (const m of matches) {
-    if (m.index > lastIndex) tokens.push(...tokenizeMentions(text.slice(lastIndex, m.index)));
+    if (m.index > lastIndex) tokens.push(...tokenizeMentions(text.slice(lastIndex, m.index), mentions));
     let host = m[0];
     try {
       host = new URL(m[0]).host.replace(/^www\./, '');
@@ -136,14 +136,26 @@ function tokenizeSegment(text) {
     tokens.push({ kind: 'url', href: m[0], text: host });
     lastIndex = m.index + m[0].length;
   }
-  if (lastIndex < text.length) tokens.push(...tokenizeMentions(text.slice(lastIndex)));
+  if (lastIndex < text.length) tokens.push(...tokenizeMentions(text.slice(lastIndex), mentions));
   return tokens;
 }
 
-function tokenizeMentions(text) {
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Matches the backend's resolved mentions exactly (longest-first so one can't shadow a longer overlap);
+// the fuzzy regex is only the fallback for stale cached items that predate `mentions`
+function mentionRegexFor(mentions) {
+  if (!mentions || mentions.length === 0) return MENTION_RE;
+  const sorted = [...mentions].map((m) => m.raw).filter(Boolean).sort((a, b) => b.length - a.length);
+  return sorted.length ? new RegExp(sorted.map(escapeRegExp).join('|'), 'g') : MENTION_RE;
+}
+
+function tokenizeMentions(text, mentions) {
   const tokens = [];
   let lastIndex = 0;
-  for (const m of text.matchAll(MENTION_RE)) {
+  for (const m of text.matchAll(mentionRegexFor(mentions))) {
     if (m.index > lastIndex) tokens.push({ kind: 'text', text: text.slice(lastIndex, m.index) });
     tokens.push({ kind: 'mention', text: m[0] });
     lastIndex = m.index + m[0].length;
@@ -154,12 +166,12 @@ function tokenizeMentions(text) {
 
 // A styled segment (e.g. **bold**) still gets tokenized for urls/mentions — Discord nests them
 // (`# **title**`, `**https://...**`) and a link/mention inside bold text must stay clickable.
-export function parseInline(text) {
+export function parseInline(text, mentions) {
   return parseInlineStyles(text).flatMap((seg) => {
     const style = seg.bold || seg.italic || seg.strike || seg.code || seg.spoiler
       ? { bold: seg.bold, italic: seg.italic, strike: seg.strike, code: seg.code, spoiler: seg.spoiler }
       : null;
-    const tokens = tokenizeSegment(seg.text);
+    const tokens = tokenizeSegment(seg.text, mentions);
     return style ? tokens.map((t) => ({ ...t, ...style })) : tokens;
   });
 }

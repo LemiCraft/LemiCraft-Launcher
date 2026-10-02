@@ -43,7 +43,8 @@ pub(crate) fn encrypt_bytes(data: &[u8]) -> Vec<u8> {
 }
 #[cfg(not(windows))]
 pub(crate) fn encrypt_bytes(data: &[u8]) -> Vec<u8> {
-    data.to_vec()
+    // Plain bytes only if sealing outright fails — the file is still owner-only via write_private
+    crate::secret::seal(data).unwrap_or_else(|| data.to_vec())
 }
 
 #[cfg(windows)]
@@ -52,7 +53,22 @@ pub(crate) fn decrypt_bytes(data: &[u8]) -> Option<Vec<u8>> {
 }
 #[cfg(not(windows))]
 pub(crate) fn decrypt_bytes(data: &[u8]) -> Option<Vec<u8>> {
-    Some(data.to_vec())
+    crate::secret::open(data)
+}
+
+// Owner-only on top of secret.rs' encryption, so the default umask can't leave token files world-readable
+#[cfg(unix)]
+pub(crate) fn write_private(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let mut file = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
+    // mode() only applies when the file gets created — tighten one that already existed
+    file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    file.write_all(data)
+}
+#[cfg(not(unix))]
+pub(crate) fn write_private(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
+    std::fs::write(path, data)
 }
 
 // Only for reading the old C# launcher's user.sec — it predates our entropy-bound scheme above
@@ -189,7 +205,7 @@ impl StoredAccount {
 pub(crate) fn save_account(account: &StoredAccount) -> Result<(), String> {
     fs::create_dir_all(game_dir()).map_err(|err| err.to_string())?;
     let json = serde_json::to_string_pretty(account).unwrap();
-    fs::write(account_path(), encrypt_bytes(json.as_bytes())).map_err(|err| err.to_string())?;
+    write_private(&account_path(), &encrypt_bytes(json.as_bytes())).map_err(|err| err.to_string())?;
     let _ = fs::remove_file(legacy_account_path());
     Ok(())
 }
@@ -543,6 +559,11 @@ fn load_current_account(fetch_skin_url: bool) -> Option<StoredAccount> {
     }
 
     Some(refreshed)
+}
+
+// Read-only: unlike load_current_account this never refreshes a token (network) or rewrites the account file
+pub(crate) fn stored_username() -> Option<String> {
+    load_stored_account().map(|a| a.username().to_string())
 }
 
 // Crate-internal — carries the raw token, unlike AccountInfo which the frontend sees

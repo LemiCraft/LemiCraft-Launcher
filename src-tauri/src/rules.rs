@@ -34,7 +34,6 @@ pub struct RulesDoc {
     footer: Vec<String>,
 }
 
-const RULES_FALLBACK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 60 * 60);
 
 fn rules_cache_path() -> std::path::PathBuf {
     crate::game::game_dir().join("rules_cache.json")
@@ -59,7 +58,7 @@ pub async fn get_rules() -> Result<RulesDoc, String> {
             Ok(doc)
         }
         Err(err) => tauri::async_runtime::spawn_blocking(|| {
-            crate::skin::read_cache_if_fresh(&rules_cache_path(), RULES_FALLBACK_MAX_AGE)
+            crate::skin::read_cache_if_fresh(&rules_cache_path(), crate::config::FALLBACK_CACHE_MAX_AGE)
                 .and_then(|json| serde_json::from_str(&json).ok())
         })
         .await

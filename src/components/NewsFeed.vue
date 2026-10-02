@@ -27,8 +27,8 @@ const feedState = computed(() => {
   return 'content';
 });
 
-function excerptTokens(text) {
-  return parseInline(replaceDiscordTimestamps(text || ''));
+function excerptTokens(text, mentions) {
+  return parseInline(replaceDiscordTimestamps(text || ''), mentions);
 }
 
 function cardTitle(title) {
@@ -94,14 +94,14 @@ onMounted(() => fetchNews());
                 <span class="date">{{ item.date }}</span>
               </div>
               <h3>
-                <template v-for="(t, ti) in excerptTokens(shortDisplayTitle(cardTitle(item.title)))" :key="ti">
+                <template v-for="(t, ti) in excerptTokens(shortDisplayTitle(cardTitle(item.title)), item.mentions)" :key="ti">
                   <span v-if="t.kind === 'mention'" class="mention">{{ t.text }}</span>
                   <span v-else-if="t.kind === 'url'" class="link-text">{{ t.text }}</span>
                   <template v-else>{{ t.text }}</template>
                 </template>
               </h3>
               <p>
-                <template v-for="(t, ti) in excerptTokens(item.excerpt)" :key="ti">
+                <template v-for="(t, ti) in excerptTokens(item.excerpt, item.mentions)" :key="ti">
                   <span v-if="t.kind === 'mention'" class="mention">{{ t.text }}</span>
                   <span v-else-if="t.kind === 'url'" class="link-text">{{ t.text }}</span>
                   <template v-else>{{ t.text }}</template>

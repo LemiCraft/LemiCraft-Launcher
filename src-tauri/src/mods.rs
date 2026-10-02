@@ -33,7 +33,6 @@ fn timed_client() -> reqwest::blocking::Client {
         .unwrap_or_default()
 }
 
-const CATALOG_FALLBACK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 60 * 60);
 
 fn catalog_cache_path() -> PathBuf {
     game_dir().join("mods_catalog_cache.json")
@@ -54,7 +53,7 @@ fn fetch_catalog_blocking(client: &reqwest::blocking::Client) -> Result<Vec<ModC
             }
             Ok(items)
         }
-        Err(err) => crate::skin::read_cache_if_fresh(&catalog_cache_path(), CATALOG_FALLBACK_MAX_AGE)
+        Err(err) => crate::skin::read_cache_if_fresh(&catalog_cache_path(), crate::config::FALLBACK_CACHE_MAX_AGE)
             .and_then(|json| serde_json::from_str(&json).ok())
             .ok_or(err),
     }
@@ -146,15 +145,22 @@ fn load_state() -> HashMap<String, InstalledMod> {
         })
         .collect();
 
+    // Import-bundle files are "mods/x.jar" paths, the rest bare names — normalized to match the mods dir listing
     let tracked_files: HashSet<String> = state
         .values()
         .flat_map(|e| e.files.iter().cloned())
         .chain(load_official_pack_state().map(|p| p.files).unwrap_or_default())
+        .chain(load_import_bundle_state().map(|s| s.files).unwrap_or_default())
+        .map(|f| file_name_of(&f))
         .collect();
     for (id, discovered_entry) in discover_unmanaged_mods(&mods_dir, &tracked_files) {
         state.entry(id).or_insert(discovered_entry);
     }
     state
+}
+
+fn file_name_of(path: &str) -> String {
+    Path::new(path).file_name().and_then(|n| n.to_str()).unwrap_or(path).to_string()
 }
 
 fn save_state(state: &HashMap<String, InstalledMod>) -> Result<(), String> {
@@ -175,7 +181,8 @@ pub struct InstalledModsInfo {
 pub async fn get_installed_mods() -> InstalledModsInfo {
     tauri::async_runtime::spawn_blocking(|| {
         let individual: HashMap<String, String> = load_state().into_iter().map(|(id, entry)| (id, entry.version)).collect();
-        let pack_ids = load_official_pack_state().map(|p| p.minimal_mods).unwrap_or_default();
+        let mut pack_ids = load_official_pack_state().map(|p| p.minimal_mods).unwrap_or_default();
+        pack_ids.extend(load_import_bundle_state().map(|s| s.mod_ids).unwrap_or_default());
         InstalledModsInfo { individual, pack_ids }
     })
     .await
@@ -397,6 +404,11 @@ pub async fn uninstall_mod(id: String) -> Result<(), String> {
                     return Err("Этот мод входит в сборку LemiSborka — уберите всю сборку целиком в её карточке выше".to_string());
                 }
             }
+            if let Some(bundle) = load_import_bundle_state() {
+                if bundle.mod_ids.iter().any(|m| m == &id) {
+                    return Err("Этот мод входит в импортированный набор — уберите его целиком".to_string());
+                }
+            }
             return Ok(());
         }
 
@@ -608,32 +620,49 @@ pub async fn apply_official_pack(app: AppHandle, download_url: String, version: 
     .map_err(|err| err.to_string())?
 }
 
-// An import code's zip also carries resourcepacks/shaderpacks/config/options.txt alongside mods/
-// (installed separately via install_mods) — the rest has no per-mod owner, tracked as one unit here
+// A code's zip has no file->id mapping, so like OfficialPackState it's tracked and removed as one unit
 #[derive(Serialize, Deserialize, Clone, Default)]
-struct ImportExtrasState {
+struct ImportBundleState {
     files: Vec<String>,
+    mod_ids: Vec<String>,
 }
 
-fn import_extras_state_path() -> PathBuf {
-    game_dir().join("import_extras_state.json")
+fn import_bundle_state_path() -> PathBuf {
+    game_dir().join("import_bundle_state.json")
 }
 
-fn load_import_extras_state() -> ImportExtrasState {
-    std::fs::read_to_string(import_extras_state_path()).ok().and_then(|json| serde_json::from_str(&json).ok()).unwrap_or_default()
+fn load_import_bundle_state() -> Option<ImportBundleState> {
+    let state: ImportBundleState =
+        std::fs::read_to_string(import_bundle_state_path()).ok().and_then(|json| serde_json::from_str(&json).ok())?;
+    // Plain relative paths only: joining an absolute or ".." entry before remove_file would escape minecraft_dir
+    let state = ImportBundleState {
+        files: state
+            .files
+            .into_iter()
+            .filter(|f| Path::new(f).components().all(|c| matches!(c, std::path::Component::Normal(_))))
+            .collect(),
+        mod_ids: state.mod_ids,
+    };
+    // Jar-based like load_official_pack_state: config/options.txt get recreated by the game, so they can't count as installed
+    let minecraft_dir = minecraft_dir();
+    let jars: Vec<&String> = state.files.iter().filter(|f| f.starts_with("mods/")).collect();
+    let probe: Vec<&String> = if jars.is_empty() { state.files.iter().collect() } else { jars };
+    if !probe.iter().any(|f| minecraft_dir.join(f).is_file()) {
+        return None;
+    }
+    Some(state)
 }
 
-fn save_import_extras_state(state: &ImportExtrasState) -> Result<(), String> {
+fn save_import_bundle_state(state: &ImportBundleState) -> Result<(), String> {
     let json = serde_json::to_string_pretty(state).map_err(|err| err.to_string())?;
     std::fs::create_dir_all(game_dir()).map_err(|err| err.to_string())?;
-    std::fs::write(import_extras_state_path(), json).map_err(|err| err.to_string())
+    std::fs::write(import_bundle_state_path(), json).map_err(|err| err.to_string())
 }
 
-const IMPORT_EXTRA_DIRS: [&str; 3] = ["resourcepacks", "shaderpacks", "config"];
+const IMPORT_BUNDLE_DIRS: [&str; 4] = ["mods", "resourcepacks", "shaderpacks", "config"];
 
-// Same zip-slip protections as extract_mods_zip, but keyed on the opposite set of entries —
-// mods/ is skipped here since install_mods already downloads and tracks those separately
-fn extract_import_extras(bytes: &[u8], minecraft_dir: &Path) -> Result<Vec<String>, String> {
+// Zip-slip safe like extract_mods_zip; paths are relative to minecraft_dir since entries span several subfolders
+fn extract_import_bundle(bytes: &[u8], minecraft_dir: &Path) -> Result<Vec<String>, String> {
     let cursor = std::io::Cursor::new(bytes);
     let mut archive = zip::ZipArchive::new(cursor).map_err(|err| err.to_string())?;
     if archive.len() > MAX_ZIP_ENTRIES {
@@ -648,9 +677,8 @@ fn extract_import_extras(bytes: &[u8], minecraft_dir: &Path) -> Result<Vec<Strin
         if file.is_dir() {
             continue;
         }
-        let is_extra = enclosed == Path::new("options.txt")
-            || IMPORT_EXTRA_DIRS.iter().any(|dir| enclosed.starts_with(dir));
-        if !is_extra {
+        let is_known = enclosed == Path::new("options.txt") || IMPORT_BUNDLE_DIRS.iter().any(|dir| enclosed.starts_with(dir));
+        if !is_known {
             continue;
         }
         let dest = minecraft_dir.join(&enclosed);
@@ -671,21 +699,77 @@ fn extract_import_extras(bytes: &[u8], minecraft_dir: &Path) -> Result<Vec<Strin
 }
 
 #[tauri::command]
-pub async fn apply_import_extras(code: String) -> Result<(), String> {
+pub async fn get_installed_import_bundle() -> Option<Vec<String>> {
+    tauri::async_runtime::spawn_blocking(|| load_import_bundle_state().map(|s| s.mod_ids)).await.unwrap_or(None)
+}
+
+#[tauri::command]
+pub async fn uninstall_import_bundle() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        if let Some(bundle) = load_import_bundle_state() {
+            let minecraft_dir = minecraft_dir();
+            let mut delete_failed = false;
+            for f in &bundle.files {
+                if let Err(err) = std::fs::remove_file(minecraft_dir.join(f)) {
+                    if err.kind() != std::io::ErrorKind::NotFound {
+                        delete_failed = true;
+                    }
+                }
+            }
+            if delete_failed {
+                return Err(
+                    "Не удалось удалить один или несколько файлов набора — возможно, игра ещё запущена или файл занят другой программой"
+                        .to_string(),
+                );
+            }
+        }
+        let _ = std::fs::remove_file(import_bundle_state_path());
+        Ok(())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+pub async fn apply_import_bundle(code: String, mod_ids: Vec<String>) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let client = timed_client();
         let bytes = download_bytes(&client, &code)?;
         let minecraft_dir = minecraft_dir();
-        let new_files = extract_import_extras(&bytes, &minecraft_dir)?;
 
-        let previous = load_import_extras_state();
-        for f in &previous.files {
-            if !new_files.contains(f) {
-                let _ = std::fs::remove_file(minecraft_dir.join(f));
+        // An individually installed copy of a mod the code brings would leave two jars of one id (Fabric refuses
+        // to start), so the old copy goes — after the download, and before extraction so load_state() doesn't
+        // mistake the new jars for individually installed mods
+        let mut state = load_state();
+        let mods_dir = minecraft_dir.join("mods");
+        let mut state_changed = false;
+        for id in &mod_ids {
+            if let Some(entry) = state.remove(id) {
+                for f in &entry.files {
+                    let _ = std::fs::remove_file(mods_dir.join(f));
+                }
+                state_changed = true;
+            }
+        }
+        if state_changed {
+            save_state(&state)?;
+        }
+
+        let new_files = extract_import_bundle(&bytes, &minecraft_dir)?;
+        if new_files.is_empty() {
+            return Err("В наборе нет файлов для установки".to_string());
+        }
+
+        // Extraction only adds/overwrites, so files of the previous import missing from this one go explicitly
+        if let Some(prev) = load_import_bundle_state() {
+            for f in &prev.files {
+                if !new_files.contains(f) {
+                    let _ = std::fs::remove_file(minecraft_dir.join(f));
+                }
             }
         }
 
-        save_import_extras_state(&ImportExtrasState { files: new_files })
+        save_import_bundle_state(&ImportBundleState { files: new_files, mod_ids })
     })
     .await
     .map_err(|err| err.to_string())?

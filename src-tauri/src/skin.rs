@@ -147,7 +147,6 @@ struct UserSkinsResponse {
     skins: Vec<LicenseSkinItem>,
 }
 
-const SKINS_LIST_FALLBACK_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 
 fn skins_list_cache_path(username: &str) -> PathBuf {
     game_dir().join("skins_list_cache").join(format!("license_{}.json", cache_key(username)))
@@ -177,7 +176,7 @@ pub(crate) fn get_license_skins(username: &str) -> Result<Vec<LicenseSkinItem>, 
             }
             Ok(items)
         }
-        Err(err) => read_cache_if_fresh(&cache_path, SKINS_LIST_FALLBACK_MAX_AGE)
+        Err(err) => read_cache_if_fresh(&cache_path, crate::config::FALLBACK_CACHE_MAX_AGE)
             .and_then(|json| serde_json::from_str(&json).ok())
             .ok_or(err),
     }

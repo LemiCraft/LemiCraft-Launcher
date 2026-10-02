@@ -67,12 +67,11 @@ fn status_cache_path() -> std::path::PathBuf {
     crate::game::game_dir().join("server_status_cache.json")
 }
 
-const STATUS_FALLBACK_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 
 /// Instant first paint from disk, no network call — the live ping still runs right after
 #[tauri::command]
 pub fn get_cached_server_status() -> Option<ServerStatusInfo> {
-    crate::skin::read_cache_if_fresh(&status_cache_path(), STATUS_FALLBACK_MAX_AGE)
+    crate::skin::read_cache_if_fresh(&status_cache_path(), crate::config::FALLBACK_CACHE_MAX_AGE)
         .and_then(|json| serde_json::from_str(&json).ok())
 }
 
@@ -90,7 +89,7 @@ pub async fn get_server_status() -> Result<ServerStatusInfo, String> {
             Ok(info)
         }
         Err(err) => tauri::async_runtime::spawn_blocking(|| {
-            crate::skin::read_cache_if_fresh(&status_cache_path(), STATUS_FALLBACK_MAX_AGE)
+            crate::skin::read_cache_if_fresh(&status_cache_path(), crate::config::FALLBACK_CACHE_MAX_AGE)
                 .and_then(|json| serde_json::from_str(&json).ok())
         })
         .await

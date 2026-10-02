@@ -7,7 +7,7 @@
 !macro NSIS_HOOK_PREINSTALL
   DetailPrint "Удаляю старую версию лаунчера..."
 
-  ExecWait '"$SYSDIR\taskkill.exe" /F /IM "LemiCraft_Launcher.exe" /T'
+  nsExec::Exec '"$SYSDIR\taskkill.exe" /F /IM "LemiCraft_Launcher.exe" /T'
   Sleep 500
 
   RMDir /r "$LOCALAPPDATA\Programs\LemiCraft Launcher"

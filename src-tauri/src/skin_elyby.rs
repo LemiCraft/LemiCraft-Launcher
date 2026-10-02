@@ -58,7 +58,7 @@ fn load_skin_session() -> SkinSession {
 fn save_skin_session(session: &SkinSession) -> Result<(), String> {
     std::fs::create_dir_all(game_dir()).map_err(|err| err.to_string())?;
     let json = serde_json::to_string_pretty(session).unwrap();
-    std::fs::write(skin_session_path(), crate::auth::encrypt_bytes(json.as_bytes())).map_err(|err| err.to_string())
+    crate::auth::write_private(&skin_session_path(), &crate::auth::encrypt_bytes(json.as_bytes())).map_err(|err| err.to_string())
 }
 
 #[tauri::command]
@@ -89,7 +89,7 @@ pub async fn open_elyby_web_login(app: AppHandle) -> Result<(), String> {
                 .inner_size(900.0, 650.0)
                 .center();
             let builder = match app_handle.get_webview_window("main") {
-                Some(main) => builder.owner(&main).map_err(|err| err.to_string())?,
+                Some(main) => builder.parent(&main).map_err(|err| err.to_string())?,
                 None => builder,
             };
             builder.build().map_err(|err| err.to_string())?;
@@ -243,7 +243,6 @@ pub async fn get_cached_elyby_skins() -> Vec<ElySkinItem> {
     .unwrap_or_default()
 }
 
-const ELYBY_SKINS_FALLBACK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 60 * 60);
 
 fn elyby_skins_cache_path(username: &str) -> PathBuf {
     game_dir().join("skins_list_cache").join(format!("elyby_{}.json", crate::skin::cache_key(username)))
@@ -263,7 +262,7 @@ fn fetch_elyby_skins(client: &reqwest::blocking::Client, session: &SkinSession, 
             ElySkinsList { items }
         }
         Err(err) => {
-            let fallback = crate::skin::read_cache_if_fresh(&cache_path, ELYBY_SKINS_FALLBACK_MAX_AGE)
+            let fallback = crate::skin::read_cache_if_fresh(&cache_path, crate::config::FALLBACK_CACHE_MAX_AGE)
                 .and_then(|json| serde_json::from_str::<Vec<ElySkinItem>>(&json).ok());
             match fallback {
                 Some(items) => ElySkinsList { items },

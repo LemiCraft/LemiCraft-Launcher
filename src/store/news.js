@@ -46,6 +46,7 @@ function mapNewsItem(item) {
     authorRole: item.authorRole,
     authorAvatarUrl: item.authorAvatarUrl,
     url: item.url,
+    mentions: item.mentions ?? [],
   };
 }
 

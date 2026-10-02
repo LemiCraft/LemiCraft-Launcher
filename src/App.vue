@@ -26,6 +26,23 @@ const active = ref('home');
 const isMaximized = ref(false);
 const isClosing = ref(false);
 
+const DISCORD_PAGE_LABELS = {
+  home: 'Читает новости',
+  skins: 'Настраивает скин',
+  mods: 'Управляет модами',
+  rules: 'Читает правила',
+  settings: 'В настройках',
+};
+
+async function syncDiscordPage(page) {
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('set_discord_page', { page: DISCORD_PAGE_LABELS[page] ?? 'В лаунчере' });
+}
+
+watch(active, (page) => {
+  if (!isLogsWindow.value) syncDiscordPage(page);
+});
+
 // A lemicraft://import/<code> link switches to the mods page; ModsView picks up pendingImportCode itself
 watch(
   () => modsState.pendingImportCode,
@@ -48,6 +65,7 @@ onMounted(async () => {
     startModsProgressListener();
     startDeepLinkListener();
     startViolationsWatcher();
+    syncDiscordPage(active.value);
   }
 });
 </script>

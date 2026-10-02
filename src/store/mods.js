@@ -15,6 +15,7 @@ export const modsState = reactive({
   applying: false,
   pendingImportCode: null,
   highlightPackInstall: false,
+  installedImportModIds: [],
 });
 
 // Set when the Home "no mods installed" banner sends the user here — ModsView briefly
@@ -25,12 +26,13 @@ export function triggerPackHighlight() {
 
 // Local-only check (no network) for the Home banner: real, non-dependency mods installed?
 export async function hasNoMods() {
-  const [info, packVersion] = await Promise.all([
+  const [info, packVersion, importIds] = await Promise.all([
     withInvoke((invoke) => invoke('get_installed_mods')),
     withInvoke((invoke) => invoke('get_installed_official_pack_version')),
+    withInvoke((invoke) => invoke('get_installed_import_bundle')),
   ]);
   const realMods = Object.keys(info?.individual ?? {}).filter((id) => id !== 'fabric-api');
-  return realMods.length === 0 && !packVersion;
+  return realMods.length === 0 && !packVersion && !importIds?.length;
 }
 
 async function withInvoke(fn) {
@@ -118,6 +120,11 @@ export async function loadOfficialPack() {
   modsState.installedOfficialVersion = installedVersion ?? null;
 }
 
+export async function loadInstalledImportBundle() {
+  const ids = await withInvoke((invoke) => invoke('get_installed_import_bundle'));
+  modsState.installedImportModIds = ids ?? [];
+}
+
 export async function applyOfficialPack() {
   const pack = modsState.officialPack;
   if (!pack || modsState.applying) return;
@@ -184,23 +191,32 @@ export async function previewImportCode(code) {
   return withInvoke((invoke) => invoke('preview_import_code', { code }));
 }
 
-// resourcepacks/shaders/config/options.txt have no per-mod owner like mods do, so they need the
-// separate apply_import_extras call below — only when the preview actually flagged extra content
-export async function applyImportCode(code, ids, hasExtras) {
+// One download for the whole code instead of an export+download per mod (rate limits); tracked as a unit like the official pack,
+// so mods from an import aren't individually toggleable after
+export async function applyImportCode(code, ids) {
   if (modsState.applying || ids.length === 0) return;
   modsState.applying = true;
   modsState.busyIds = ids;
-  showProgress('Применяю...');
+  showProgress('Скачиваю набор...');
   try {
-    await withInvoke((invoke) => invoke('install_mods', { ids }));
-    if (hasExtras) {
-      showProgress('Устанавливаю ресурсы сборки...');
-      await withInvoke((invoke) => invoke('apply_import_extras', { code }));
-    }
+    await withInvoke((invoke) => invoke('apply_import_bundle', { code, modIds: ids }));
+    modsState.installedImportModIds = ids;
     await refreshInstalledMods();
   } finally {
     modsState.applying = false;
     modsState.busyIds = [];
     hideProgress();
+  }
+}
+
+export async function uninstallImportBundle() {
+  if (modsState.applying) return;
+  modsState.applying = true;
+  try {
+    await withInvoke((invoke) => invoke('uninstall_import_bundle'));
+    modsState.installedImportModIds = [];
+    await refreshInstalledMods();
+  } finally {
+    modsState.applying = false;
   }
 }

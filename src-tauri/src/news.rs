@@ -34,6 +34,15 @@ struct NewsApiItem {
     published_at: String,
     category: String,
     url: String,
+    #[serde(default)]
+    mentions: Vec<NewsMention>,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+pub struct NewsMention {
+    raw: String,
+    name: String,
+    emoji: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -52,6 +61,9 @@ pub struct NewsItem {
     date: String,
     tag: String,
     url: String,
+    // A news_cache.json written before this field existed must still load
+    #[serde(default)]
+    mentions: Vec<NewsMention>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -90,7 +102,6 @@ fn category_label(category: &str) -> &'static str {
     }
 }
 
-const NEWS_FALLBACK_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(30 * 24 * 60 * 60);
 
 fn news_cache_path() -> std::path::PathBuf {
     crate::game::game_dir().join("news_cache.json")
@@ -115,7 +126,7 @@ pub async fn get_news() -> Result<NewsPage, String> {
             Ok(page)
         }
         Err(err) => tauri::async_runtime::spawn_blocking(|| {
-            crate::skin::read_cache_if_fresh(&news_cache_path(), NEWS_FALLBACK_MAX_AGE)
+            crate::skin::read_cache_if_fresh(&news_cache_path(), crate::config::FALLBACK_CACHE_MAX_AGE)
                 .and_then(|json| serde_json::from_str(&json).ok())
         })
         .await
@@ -180,6 +191,7 @@ async fn get_news_live(before: Option<String>) -> Result<NewsPage, String> {
                 date: item.published_at,
                 tag: category_label(&item.category).to_string(),
                 url: item.url,
+                mentions: item.mentions,
             }
         })
         .collect();

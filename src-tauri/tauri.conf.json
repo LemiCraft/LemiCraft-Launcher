@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "LemiCraft Launcher",
   "mainBinaryName": "LemiCraft-Launcher",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "identifier": "ru.lemicraft.launcher",
   "build": {
     "frontendDist": "../dist",

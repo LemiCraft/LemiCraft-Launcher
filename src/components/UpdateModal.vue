@@ -33,7 +33,7 @@ const indeterminate = computed(() => updateState.installing || updateState.perce
         <p class="version-line mono">{{ updateState.info?.version ? `→ ${updateState.info.version}` : '' }}</p>
 
         <div class="meta-row">
-          <span>{{ formatFileSize(updateState.info?.file_size) }}</span>
+          <span v-if="updateState.info?.file_size">{{ formatFileSize(updateState.info.file_size) }}</span>
           <span v-if="releaseDate">{{ releaseDate }}</span>
         </div>
 
@@ -53,7 +53,7 @@ const indeterminate = computed(() => updateState.installing || updateState.perce
         <div class="modal-actions">
           <button v-if="!updateState.info?.is_required" class="cancel-btn" :disabled="updateState.downloading" @click="dismissUpdate">Позже</button>
           <button class="update-btn" :disabled="updateState.downloading || updateState.installing" @click="startUpdateDownload">
-            {{ updateState.downloading ? 'Скачиваю...' : 'Обновить сейчас' }}
+            {{ updateState.downloading ? 'Скачиваю...' : updateState.info?.manual ? 'Открыть страницу загрузки' : 'Обновить сейчас' }}
           </button>
         </div>
       </div>
