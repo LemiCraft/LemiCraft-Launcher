@@ -44,9 +44,8 @@ watch(
     </div>
 
     <div class="rules-scroll-wrap">
-      <div class="fade fade-top" :class="{ show: topFaded }"></div>
 
-      <div class="rules-scroll" ref="scrollEl" @scroll="onScroll">
+      <div class="rules-scroll edge-fade" :class="{ 'edge-top': topFaded, 'edge-bottom': bottomFaded }" ref="scrollEl" @scroll="onScroll">
         <div v-if="rulesState.loading && !rulesState.doc" class="empty-state">Загрузка...</div>
         <div v-else-if="rulesState.error && !rulesState.doc" class="empty-state">Не удалось загрузить правила</div>
 
@@ -72,7 +71,6 @@ watch(
         </template>
       </div>
 
-      <div class="fade fade-bottom" :class="{ show: bottomFaded }"></div>
     </div>
   </div>
 </template>
@@ -111,28 +109,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 22px;
-}
-
-.fade {
-  position: absolute;
-  left: 0;
-  right: 10px;
-  height: 14px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  z-index: 1;
-}
-.fade.show {
-  opacity: 1;
-}
-.fade-top {
-  top: 0;
-  background: linear-gradient(var(--bg), transparent);
-}
-.fade-bottom {
-  bottom: 0;
-  background: linear-gradient(transparent, var(--bg));
 }
 
 .empty-state {

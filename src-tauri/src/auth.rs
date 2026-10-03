@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -13,6 +14,16 @@ use crate::game::game_dir;
 const CLIENT_ID: &str = "00000000402b5328";
 const REDIRECT_URI: &str = "https://login.live.com/oauth20_desktop.srf";
 const SCOPE: &str = "XboxLive.signin offline_access";
+
+// reqwest's own text is just "error sending request for url (...)", which tells a player nothing
+pub(crate) fn net_error(service: &str, err: &reqwest::Error) -> String {
+    log::warn!("request to {service} failed: {err:?}");
+    if err.is_timeout() {
+        format!("Сервер {service} не отвечает. Проверьте интернет или VPN и попробуйте снова")
+    } else {
+        format!("Не удалось связаться с сервером {service}. Проверьте интернет, VPN или антивирус и попробуйте снова")
+    }
+}
 
 fn timed_client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
@@ -321,7 +332,7 @@ fn request_token(client: &reqwest::blocking::Client, params: &[(&str, &str)]) ->
         .post("https://login.live.com/oauth20_token.srf")
         .form(params)
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| net_error("Microsoft", &err))?;
     if !res.status().is_success() {
         let status = res.status();
         let body = res.text().unwrap_or_default();
@@ -362,7 +373,7 @@ fn xbl_authenticate(client: &reqwest::blocking::Client, ms_access_token: &str) -
         .post("https://user.auth.xboxlive.com/user/authenticate")
         .json(&body)
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| net_error("Xbox Live", &err))?;
     if !res.status().is_success() {
         let status = res.status();
         let text = res.text().unwrap_or_default();
@@ -384,7 +395,7 @@ fn xsts_authorize(client: &reqwest::blocking::Client, xbl_token: &str) -> Result
         .post("https://xsts.auth.xboxlive.com/xsts/authorize")
         .json(&body)
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| net_error("Xbox Live", &err))?;
     let status = res.status();
     if status.as_u16() == 401 {
         return Err(
@@ -405,7 +416,7 @@ fn minecraft_login(client: &reqwest::blocking::Client, uhs: &str, xsts_token: &s
         .post("https://api.minecraftservices.com/authentication/login_with_xbox")
         .json(&body)
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| net_error("Minecraft", &err))?;
     if !res.status().is_success() {
         let status = res.status();
         let text = res.text().unwrap_or_default();
@@ -448,7 +459,7 @@ fn minecraft_profile(client: &reqwest::blocking::Client, mc_access_token: &str) 
         .get("https://api.minecraftservices.com/minecraft/profile")
         .bearer_auth(mc_access_token)
         .send()
-        .map_err(|err| err.to_string())?;
+        .map_err(|err| net_error("Minecraft", &err))?;
     if res.status().as_u16() == 404 {
         return Err("У этого аккаунта нет купленной лицензии Minecraft".to_string());
     }
@@ -460,17 +471,31 @@ fn minecraft_profile(client: &reqwest::blocking::Client, mc_access_token: &str) 
     res.json().map_err(|err| err.to_string())
 }
 
+// Bumped on every login start/cancel so a cancelled flow can't report an error or save an account later
+static LOGIN_ATTEMPT: AtomicU64 = AtomicU64::new(0);
+
+#[tauri::command]
+pub fn cancel_microsoft_login(app: AppHandle) {
+    LOGIN_ATTEMPT.fetch_add(1, Ordering::SeqCst);
+    if let Some(w) = app.get_webview_window("msa-login") {
+        let _ = w.close();
+    }
+}
+
 #[tauri::command]
 pub fn login_microsoft(app: AppHandle) -> Result<(), String> {
+    let attempt = LOGIN_ATTEMPT.fetch_add(1, Ordering::SeqCst) + 1;
     std::thread::spawn(move || {
-        if let Err(err) = run_login(&app) {
-            let _ = app.emit("auth-error", err);
+        if let Err(err) = run_login(&app, attempt) {
+            if LOGIN_ATTEMPT.load(Ordering::SeqCst) == attempt {
+                let _ = app.emit("auth-error", err);
+            }
         }
     });
     Ok(())
 }
 
-fn run_login(app: &AppHandle) -> Result<(), String> {
+fn run_login(app: &AppHandle, attempt: u64) -> Result<(), String> {
     let code = get_authorization_code(app)?;
 
     let client = timed_client();
@@ -487,6 +512,9 @@ fn run_login(app: &AppHandle) -> Result<(), String> {
     let mc_access_token = minecraft_login(&client, &uhs, &xsts.token)?;
     let profile = minecraft_profile(&client, &mc_access_token)?;
 
+    if LOGIN_ATTEMPT.load(Ordering::SeqCst) != attempt {
+        return Err("Вход отменён".to_string());
+    }
     let stored = StoredAccount::Microsoft {
         uuid: profile.id.clone(),
         username: profile.name.clone(),
@@ -509,7 +537,12 @@ fn load_current_account(fetch_skin_url: bool) -> Option<StoredAccount> {
     else {
         if fetch_skin_url {
             if let StoredAccount::ElyBy { access_token, .. } = &stored {
-                if validate_elyby_token(access_token) == Some(false) {
+                // Checked twice: a single odd 4xx must not wipe a login that still works
+                let rejected = || validate_elyby_token(access_token) == Some(false);
+                if rejected() && {
+                    std::thread::sleep(Duration::from_millis(700));
+                    rejected()
+                } {
                     let _ = fs::remove_file(account_path());
                     return None;
                 }

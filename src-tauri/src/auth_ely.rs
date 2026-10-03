@@ -1,6 +1,6 @@
 use std::io::{BufRead, BufReader, Write};
 use std::net::TcpListener;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -9,12 +9,13 @@ use tauri::{AppHandle, Emitter};
 use crate::auth::{save_account, StoredAccount};
 use crate::config::API_BASE;
 
-// The system-browser flow has no window-close signal to detect a stuck login
-static LOGIN_CANCELLED: AtomicBool = AtomicBool::new(false);
+// The browser flow has no window-close signal, so only Cancel (or the timeout) ends a stuck login.
+// Bumped on every start/cancel so a cancelled flow can't report an error or save an account later
+static LOGIN_ATTEMPT: AtomicU64 = AtomicU64::new(0);
 
 #[tauri::command]
 pub fn cancel_elyby_login() {
-    LOGIN_CANCELLED.store(true, Ordering::SeqCst);
+    LOGIN_ATTEMPT.fetch_add(1, Ordering::SeqCst);
 }
 
 #[derive(Deserialize)]
@@ -45,16 +46,39 @@ struct SkinInfoResponse {
 
 #[tauri::command]
 pub fn login_elyby(app: AppHandle) -> Result<(), String> {
+    let attempt = LOGIN_ATTEMPT.fetch_add(1, Ordering::SeqCst) + 1;
     std::thread::spawn(move || {
-        if let Err(err) = run_login(&app) {
-            let _ = app.emit("auth-error", err);
+        if let Err(err) = run_login(&app, attempt) {
+            if LOGIN_ATTEMPT.load(Ordering::SeqCst) == attempt {
+                let _ = app.emit("auth-error", err);
+            }
         }
     });
     Ok(())
 }
 
-fn run_login(app: &AppHandle) -> Result<(), String> {
-    LOGIN_CANCELLED.store(false, Ordering::SeqCst);
+fn bind_callback_port(port: u16) -> Result<TcpListener, String> {
+    let mut retries = 0;
+    loop {
+        match TcpListener::bind(("127.0.0.1", port)) {
+            Ok(listener) => return Ok(listener),
+            // A login cancelled a moment ago may not have released the port yet
+            Err(err) if err.kind() == std::io::ErrorKind::AddrInUse && retries < 5 => {
+                retries += 1;
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            Err(err) => {
+                let hint = match find_port_owner(port) {
+                    Some(name) => format!("Порт {port} занят приложением \"{name}\". Закройте его и попробуйте снова, либо перезагрузите компьютер"),
+                    None => format!("Порт {port} занят другим приложением на вашем компьютере. Закройте лишние программы (антивирус, другие лаунчеры, торрент-клиенты) или перезагрузите компьютер и попробуйте снова"),
+                };
+                return Err(format!("Не удалось занять порт {port} для приёма входа от ely.by: {hint} ({err})"));
+            }
+        }
+    }
+}
+
+fn run_login(app: &AppHandle, attempt: u64) -> Result<(), String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(20))
         .build()
@@ -63,21 +87,15 @@ fn run_login(app: &AppHandle) -> Result<(), String> {
     let auth = client
         .get(format!("{API_BASE}/auth/ely/url"))
         .send()
-        .map_err(|err| err.to_string())?
+        .map_err(|err| crate::auth::net_error("LemiCraft", &err))?
         .json::<ElyAuthUrlResponse>()
         .map_err(|err| err.to_string())?;
 
     let (port, path) = parse_redirect_uri(&auth.redirect_uri)?;
-    let listener = TcpListener::bind(("127.0.0.1", port)).map_err(|err| {
-        let hint = match find_port_owner(port) {
-            Some(name) => format!("Порт {port} занят приложением \"{name}\". Закройте его и попробуйте снова, либо перезагрузите компьютер"),
-            None => format!("Порт {port} занят другим приложением на вашем компьютере. Закройте лишние программы (антивирус, другие лаунчеры, торрент-клиенты) или перезагрузите компьютер и попробуйте снова"),
-        };
-        format!("Не удалось занять порт {port} для приёма входа от ely.by: {hint} ({err})")
-    })?;
+    let listener = bind_callback_port(port)?;
     crate::shell::open_external(auth.auth_url)?;
 
-    let (code, state) = accept_one_callback(&listener, &path, &auth.state)?;
+    let (code, state) = accept_one_callback(&listener, &path, &auth.state, attempt)?;
     if state != auth.state {
         return Err("Некорректный state — возможная подмена ответа (CSRF)".to_string());
     }
@@ -86,7 +104,7 @@ fn run_login(app: &AppHandle) -> Result<(), String> {
         .post(format!("{API_BASE}/auth/ely/exchange"))
         .json(&serde_json::json!({ "code": code, "state": state }))
         .send()
-        .map_err(|err| err.to_string())?
+        .map_err(|err| crate::auth::net_error("LemiCraft", &err))?
         .json::<ElyExchangeResponse>()
         .map_err(|err| err.to_string())?;
 
@@ -107,6 +125,9 @@ fn run_login(app: &AppHandle) -> Result<(), String> {
         .filter(|info| info.success)
         .and_then(|info| info.skin_url);
 
+    if LOGIN_ATTEMPT.load(Ordering::SeqCst) != attempt {
+        return Err("Вход отменён".to_string());
+    }
     let stored = StoredAccount::ElyBy { uuid, username, access_token, skin_url };
     save_account(&stored)?;
 
@@ -165,7 +186,7 @@ fn parse_redirect_uri(redirect_uri: &str) -> Result<(u16, String), String> {
     Ok((port, url.path().to_string()))
 }
 
-fn accept_one_callback(listener: &TcpListener, expected_path: &str, expected_state: &str) -> Result<(String, String), String> {
+fn accept_one_callback(listener: &TcpListener, expected_path: &str, expected_state: &str, attempt: u64) -> Result<(String, String), String> {
     listener.set_nonblocking(true).map_err(|err| err.to_string())?;
 
     let deadline = Duration::from_secs(300);
@@ -207,7 +228,7 @@ fn accept_one_callback(listener: &TcpListener, expected_path: &str, expected_sta
                 return Ok((code, state));
             }
             Err(err) if err.kind() == std::io::ErrorKind::WouldBlock || err.kind() == std::io::ErrorKind::TimedOut => {
-                if LOGIN_CANCELLED.load(Ordering::SeqCst) {
+                if LOGIN_ATTEMPT.load(Ordering::SeqCst) != attempt {
                     return Err("Вход отменён".to_string());
                 }
                 if start.elapsed() > deadline {

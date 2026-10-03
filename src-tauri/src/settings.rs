@@ -24,6 +24,8 @@ pub struct LauncherSettings {
     pub crash_analyzer: bool,
     #[serde(default = "default_true")]
     pub discord_rpc: bool,
+    #[serde(default)]
+    pub translucent: bool,
 }
 
 fn default_ram_gb() -> u32 {
@@ -53,6 +55,7 @@ impl Default for LauncherSettings {
             show_logs: false,
             crash_analyzer: true,
             discord_rpc: true,
+            translucent: false,
         }
     }
 }
@@ -92,5 +95,6 @@ pub fn save_settings(app: tauri::AppHandle, settings: LauncherSettings) -> Resul
     fs::write(settings_path(), json).map_err(|err| err.to_string())?;
     // Applies a toggle flip right away (clears or restores the live activity) instead of on the next event
     crate::discord_rpc::refresh(&app);
+    crate::window_effect::apply(&app, settings.translucent);
     Ok(())
 }

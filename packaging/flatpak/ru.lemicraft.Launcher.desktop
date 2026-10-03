@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=LemiCraft Launcher
+Comment=Лаунчер Minecraft-сервера lemicraft.ru
+Exec=LemiCraft-Launcher
+Icon=ru.lemicraft.Launcher
+Terminal=false
+Type=Application
+Categories=Game;
+MimeType=x-scheme-handler/lemicraft;
+StartupWMClass=LemiCraft-Launcher

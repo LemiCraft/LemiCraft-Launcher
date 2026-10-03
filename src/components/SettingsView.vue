@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { pushNotification } from '../store/notifications.js';
 import { showConfirmDialog } from '../store/confirmDialog.js';
 import ArmedResetButton from './ArmedResetButton.vue';
+import { applyTranslucent } from '../store/appearance.js';
 
 const scrollEl = ref(null);
 const topFaded = ref(false);
@@ -22,6 +23,8 @@ const autoConnect = ref(false);
 const showLogs = ref(false);
 const crashAnalyzer = ref(true);
 const discordRpc = ref(true);
+const translucent = ref(false);
+const translucencySupported = ref(false);
 const gameDir = ref(null);
 const defaultGameDir = ref('');
 const ramDragging = ref(false);
@@ -146,6 +149,8 @@ onMounted(async () => {
   showLogs.value = settings.show_logs;
   crashAnalyzer.value = settings.crash_analyzer;
   discordRpc.value = settings.discord_rpc;
+  translucent.value = settings.translucent;
+  translucencySupported.value = await invoke('get_translucency_support');
   gameDir.value = settings.game_dir;
   defaultGameDir.value = await invoke('get_default_game_dir');
   invoke('get_total_ram_gb').then((total) => {
@@ -159,7 +164,11 @@ onMounted(async () => {
 });
 
 let saveTimer = null;
-watch([ram, jvmArgs, onLaunch, autoConnect, showLogs, crashAnalyzer, discordRpc, gameDir], () => {
+watch(translucent, (on) => {
+  if (settingsLoaded.value && translucencySupported.value) applyTranslucent(on, { animate: true });
+});
+
+watch([ram, jvmArgs, onLaunch, autoConnect, showLogs, crashAnalyzer, discordRpc, translucent, gameDir], () => {
   if (!settingsLoaded.value || !window.__TAURI_INTERNALS__) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
@@ -173,6 +182,7 @@ watch([ram, jvmArgs, onLaunch, autoConnect, showLogs, crashAnalyzer, discordRpc,
         show_logs: showLogs.value,
         crash_analyzer: crashAnalyzer.value,
         discord_rpc: discordRpc.value,
+        translucent: translucent.value,
         game_dir: gameDir.value,
       },
     });
@@ -189,9 +199,8 @@ onUnmounted(() => {
     <h1>Настройки</h1>
 
     <div class="settings-scroll-wrap">
-    <div class="fade fade-top" :class="{ show: topFaded }"></div>
 
-    <div class="settings-scroll" ref="scrollEl" @scroll="onScroll">
+    <div class="settings-scroll edge-fade" :class="{ 'edge-top': topFaded, 'edge-bottom': bottomFaded }" ref="scrollEl" @scroll="onScroll">
     <div class="settings-body">
     <Transition name="crossfade">
     <div v-if="!settingsLoaded" key="loading" class="settings-skeleton">
@@ -316,6 +325,19 @@ onUnmounted(() => {
       </div>
     </section>
 
+    <section v-if="translucencySupported" class="group">
+      <h2>Внешний вид</h2>
+      <div class="row">
+        <div class="row-text">
+          <span class="row-title">Полупрозрачный фон</span>
+          <span class="row-sub">Размытый фон окна, сквозь который видны обои и окна позади</span>
+        </div>
+        <button class="toggle" :class="{ on: translucent }" @click="translucent = !translucent">
+          <span class="knob"></span>
+        </button>
+      </div>
+    </section>
+
     <section class="group">
       <h2>О лаунчере</h2>
       <div class="row">
@@ -332,7 +354,6 @@ onUnmounted(() => {
     </div>
     </div>
 
-    <div class="fade fade-bottom" :class="{ show: bottomFaded }"></div>
     </div>
   </div>
 </template>
@@ -357,28 +378,6 @@ onUnmounted(() => {
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
-}
-
-.fade {
-  position: absolute;
-  left: 0;
-  right: 10px;
-  height: 14px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  z-index: 1;
-}
-.fade.show {
-  opacity: 1;
-}
-.fade-top {
-  top: 0;
-  background: linear-gradient(var(--bg), transparent);
-}
-.fade-bottom {
-  bottom: 0;
-  background: linear-gradient(transparent, var(--bg));
 }
 
 /* Not on .settings itself — App.vue's page-switch transition applies position: absolute to that */
@@ -421,7 +420,7 @@ onUnmounted(() => {
   flex-direction: column;
   gap: 10px;
   max-width: 640px;
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 18px 20px;
@@ -468,7 +467,7 @@ onUnmounted(() => {
 
 .group {
   max-width: 640px;
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 8px 20px;

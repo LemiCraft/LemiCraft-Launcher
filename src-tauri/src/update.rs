@@ -104,8 +104,7 @@ pub async fn check_for_update(current_version: String) -> Result<Option<UpdateIn
     tauri::async_runtime::spawn_blocking(move || {
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(15))
-            // Lets the backend tell this launcher apart from the old C# one when deciding
-            // isRequired — see update.rs's own check_for_update vs. the old launcher's UpdateService
+            // Lets the backend tell this launcher apart from the old C# one when deciding isRequired
             .user_agent(format!("LemiCraft-Launcher/{current_version} (Tauri)"))
             .build()
             .map_err(|err| err.to_string())?;

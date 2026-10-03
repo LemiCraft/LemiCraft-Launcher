@@ -457,6 +457,8 @@ struct OfficialPackResponse {
     changelog: Vec<String>,
     #[serde(rename = "minimalMods", default)]
     minimal_mods: Vec<String>,
+    #[serde(rename = "mcVersion", default)]
+    mc_version: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -467,6 +469,9 @@ pub struct OfficialPackInfo {
     file_size: u64,
     changelog: Vec<String>,
     minimal_mods: Vec<String>,
+    mc_version: Option<String>,
+    // Mods built for another game version would make Fabric refuse to start; no mcVersion = assume fine
+    compatible: bool,
 }
 
 #[tauri::command]
@@ -481,6 +486,7 @@ pub async fn get_official_pack() -> Result<Option<OfficialPackInfo>, String> {
         if !parsed.success {
             return Ok(None);
         }
+        let compatible = parsed.mc_version.as_deref().is_none_or(|v| v == crate::config::MC_VERSION);
         Ok(Some(OfficialPackInfo {
             version: parsed.version,
             name: parsed.name,
@@ -488,6 +494,8 @@ pub async fn get_official_pack() -> Result<Option<OfficialPackInfo>, String> {
             file_size: parsed.file_size,
             changelog: parsed.changelog,
             minimal_mods: parsed.minimal_mods,
+            mc_version: parsed.mc_version,
+            compatible,
         }))
     })
     .await

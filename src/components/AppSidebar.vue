@@ -56,7 +56,7 @@ function openViolation() {
 const displayName = computed(() => (accountStore.loggedIn ? accountStore.username : 'Гость'));
 const displayRank = computed(() => (accountStore.loggedIn ? accountStore.provider : 'Войти в аккаунт'));
 
-const { loggingInProvider, authError, loginMicrosoft, loginElyBy, cancelLogin, logout } = useLogin();
+const { authError, loginMicrosoft, loginElyBy, logout } = useLogin();
 const menuOpen = ref(false);
 const accountWrapEl = ref(null);
 
@@ -81,14 +81,6 @@ async function handleLoginMicrosoft() {
 async function handleLoginElyBy() {
   await loginElyBy();
   menuOpen.value = false;
-}
-
-function handleElyByButtonClick() {
-  if (loggingInProvider.value === 'elyby') {
-    cancelLogin();
-  } else {
-    handleLoginElyBy();
-  }
 }
 
 async function handleLogout() {
@@ -185,17 +177,8 @@ const quickLinks = [
             <button class="menu-item danger" @click="handleLogout">Выйти</button>
           </template>
           <template v-else>
-            <button class="menu-item" :disabled="!!loggingInProvider" @click="handleLoginMicrosoft">
-              {{ loggingInProvider === 'microsoft' ? 'Открываю окно входа...' : 'Войти через Microsoft' }}
-            </button>
-            <button
-              class="menu-item"
-              :class="{ cancellable: loggingInProvider === 'elyby' }"
-              :disabled="loggingInProvider === 'microsoft'"
-              @click="handleElyByButtonClick"
-            >
-              {{ loggingInProvider === 'elyby' ? 'Отменить вход через ely.by' : 'Войти через Ely.by' }}
-            </button>
+            <button class="menu-item" @click="handleLoginMicrosoft">Войти через Microsoft</button>
+            <button class="menu-item" @click="handleLoginElyBy">Войти через Ely.by</button>
             <div class="menu-register">
               <span @click="openExternal('https://account.ely.by/register')">Нет аккаунта Ely.by?</span>
               <span @click="openExternal('https://www.minecraft.net/store/minecraft-java-bedrock-edition-pc')">Купить Minecraft</span>
@@ -233,6 +216,11 @@ const quickLinks = [
   flex-direction: column;
   padding: 20px 14px;
   gap: 8px;
+}
+
+/* Clears the macOS traffic lights */
+:global(.mac) .sidebar {
+  padding-top: 44px;
 }
 
 .brand {
@@ -589,19 +577,8 @@ const quickLinks = [
   cursor: pointer;
   transition: background 0.15s ease;
 }
-.menu-item:hover:not(:disabled) {
+.menu-item:hover {
   background: var(--surface-hover);
-}
-.menu-item:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-.menu-item.cancellable {
-  color: var(--text-muted);
-}
-.menu-item.cancellable:hover {
-  background: var(--bad-soft);
-  color: var(--bad);
 }
 .menu-item.danger {
   color: var(--bad);
@@ -614,6 +591,7 @@ const quickLinks = [
   padding: 6px 8px 0;
   font-size: 11.5px;
   color: var(--bad);
+  overflow-wrap: anywhere;
 }
 
 .menu-register {

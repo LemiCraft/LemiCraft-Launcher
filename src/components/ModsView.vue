@@ -237,9 +237,8 @@ watch(
     </div>
 
     <div class="mods-scroll-wrap">
-      <div class="fade fade-top" :class="{ show: topFaded }"></div>
 
-      <div class="mods-scroll" ref="scrollEl" @scroll="onScroll">
+      <div class="mods-scroll edge-fade" :class="{ 'edge-top': topFaded, 'edge-bottom': bottomFaded }" ref="scrollEl" @scroll="onScroll">
         <Transition name="pack-fade">
         <section v-if="modsState.officialPack" class="pack-card">
           <div class="pack-info">
@@ -253,7 +252,11 @@ watch(
             <button
               class="pack-btn"
               :class="{ highlight: modsState.highlightPackInstall }"
-              :disabled="modsState.applying || modsState.installedOfficialVersion === modsState.officialPack.version"
+              :disabled="
+                modsState.applying ||
+                !modsState.officialPack.compatible ||
+                modsState.installedOfficialVersion === modsState.officialPack.version
+              "
               @click="onApplyOfficialPack"
             >
               {{
@@ -345,7 +348,6 @@ watch(
         <p v-if="filteredCatalog.length === 0 && !modsState.loading" class="empty-state">Пока пусто</p>
       </div>
 
-      <div class="fade fade-bottom" :class="{ show: bottomFaded }"></div>
     </div>
   </div>
 </template>
@@ -373,28 +375,6 @@ watch(
   display: flex;
   flex-direction: column;
   gap: 18px;
-}
-
-.fade {
-  position: absolute;
-  left: 0;
-  right: 10px;
-  height: 14px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  z-index: 1;
-}
-.fade.show {
-  opacity: 1;
-}
-.fade-top {
-  top: 0;
-  background: linear-gradient(var(--bg), transparent);
-}
-.fade-bottom {
-  bottom: 0;
-  background: linear-gradient(transparent, var(--bg));
 }
 
 .head {
@@ -446,7 +426,7 @@ watch(
   gap: 16px;
   padding: 18px 20px;
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
   flex-shrink: 0;
 }
@@ -564,7 +544,7 @@ watch(
   flex-shrink: 0;
   padding: 16px 18px;
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
 }
 
@@ -776,7 +756,7 @@ watch(
 .mod-card {
   padding: 12px;
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
   cursor: pointer;
   transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;

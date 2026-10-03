@@ -7,7 +7,19 @@ use sha2::{Digest, Sha256};
 const MAGIC: &[u8; 4] = b"LCE1";
 const NONCE_LEN: usize = 12;
 
+// macOS has no machine-id file; the hardware UUID is its stable per-machine value
+#[cfg(target_os = "macos")]
+fn platform_uuid() -> Option<String> {
+    let out = std::process::Command::new("/usr/sbin/ioreg").args(["-rd1", "-c", "IOPlatformExpertDevice"]).output().ok()?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let line = text.lines().find(|l| l.contains("IOPlatformUUID"))?;
+    line.split('"').nth(3).map(str::to_string)
+}
+
 fn machine_key() -> [u8; 32] {
+    #[cfg(target_os = "macos")]
+    let machine_id = platform_uuid().unwrap_or_default();
+    #[cfg(not(target_os = "macos"))]
     let machine_id = ["/etc/machine-id", "/var/lib/dbus/machine-id"]
         .iter()
         .find_map(|p| std::fs::read_to_string(p).ok())

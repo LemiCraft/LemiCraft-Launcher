@@ -18,6 +18,7 @@ mod skin;
 mod skin_elyby;
 mod update;
 mod violations;
+mod window_effect;
 
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -35,12 +36,14 @@ async fn open_logs_window(app: tauri::AppHandle) -> Result<(), String> {
     app
         .run_on_main_thread(move || {
             let result = (|| {
-                WebviewWindowBuilder::new(&app_handle, "logs", WebviewUrl::App("index.html".into()))
+                let builder = WebviewWindowBuilder::new(&app_handle, "logs", WebviewUrl::App("index.html".into()))
                     .title("Логи игры — LemiCraft")
                     .inner_size(640.0, 480.0)
-                    .decorations(false)
-                    .build()
-                    .map_err(|err| err.to_string())?;
+                    .decorations(false);
+                // macOS keeps its own traffic lights over the page, which leaves room for them
+                #[cfg(target_os = "macos")]
+                let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+                builder.build().map_err(|err| err.to_string())?;
                 Ok(())
             })();
             let _ = tx.send(result);
@@ -105,6 +108,20 @@ pub fn run() {
 
       discord_rpc::start(app.handle().clone());
 
+      // Built in code, not from tauri.conf.json: only platforms with a window backdrop get a transparent window
+      let main_config = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("в tauri.conf.json нет окна main")?;
+      let translucent = settings::load().translucent && window_effect::is_supported();
+      let mut builder = WebviewWindowBuilder::from_config(app.handle(), &main_config)?.transparent(window_effect::is_supported());
+      if translucent {
+        builder = builder.initialization_script("window.__LC_TRANSLUCENT__ = true;");
+      }
+      #[cfg(target_os = "macos")]
+      {
+        builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+      }
+      builder.build()?;
+      window_effect::apply(app.handle(), translucent);
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -116,6 +133,7 @@ pub fn run() {
       discord_rpc::set_discord_page,
       game::move_game_files,
       auth::login_microsoft,
+      auth::cancel_microsoft_login,
       auth_ely::login_elyby,
       auth_ely::cancel_elyby_login,
       auth::get_current_account,
@@ -132,6 +150,7 @@ pub fn run() {
       game::get_default_game_dir,
       game::is_game_installed,
       settings::get_total_ram_gb,
+      window_effect::get_translucency_support,
       skin::fetch_skin_data_uri,
       skin::get_current_account_skins,
       skin::get_cached_current_account_skins,

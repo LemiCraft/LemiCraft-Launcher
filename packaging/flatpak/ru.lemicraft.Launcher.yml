@@ -1,0 +1,39 @@
+app-id: ru.lemicraft.Launcher
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+command: LemiCraft-Launcher
+
+build-options:
+  no-debuginfo: true
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --device=dri
+  # Discord Rich Presence talks to the desktop Discord over this socket
+  - --filesystem=xdg-run/discord-ipc-0
+
+modules:
+  - name: lemicraft-launcher
+    buildsystem: simple
+    build-commands:
+      # The binary is the one tauri already built (inside the old-glibc chroot); this just repackages the .deb
+      - ar x lemicraft.deb
+      - tar -xf data.tar.*
+      - install -Dm755 usr/bin/LemiCraft-Launcher /app/bin/LemiCraft-Launcher
+      - install -Dm644 ru.lemicraft.Launcher.desktop /app/share/applications/ru.lemicraft.Launcher.desktop
+      - install -Dm644 ru.lemicraft.Launcher.metainfo.xml /app/share/metainfo/ru.lemicraft.Launcher.metainfo.xml
+      - install -Dm644 usr/share/icons/hicolor/32x32/apps/LemiCraft-Launcher.png /app/share/icons/hicolor/32x32/apps/ru.lemicraft.Launcher.png
+      - install -Dm644 usr/share/icons/hicolor/128x128/apps/LemiCraft-Launcher.png /app/share/icons/hicolor/128x128/apps/ru.lemicraft.Launcher.png
+      - install -Dm644 usr/share/icons/hicolor/256x256@2/apps/LemiCraft-Launcher.png /app/share/icons/hicolor/256x256@2/apps/ru.lemicraft.Launcher.png
+    sources:
+      - type: file
+        path: lemicraft.deb
+      - type: file
+        path: ru.lemicraft.Launcher.desktop
+      - type: file
+        path: ru.lemicraft.Launcher.metainfo.xml

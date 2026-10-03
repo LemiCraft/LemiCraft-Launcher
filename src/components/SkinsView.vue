@@ -261,9 +261,8 @@ async function onConfirmElybyLogin() {
     </div>
 
     <div class="skins-scroll-wrap">
-    <div class="fade fade-top" :class="{ show: topFaded }"></div>
 
-    <div class="skins-scroll" ref="scrollEl" @scroll="onScroll">
+    <div class="skins-scroll edge-fade" :class="{ 'edge-top': topFaded, 'edge-bottom': bottomFaded }" ref="scrollEl" @scroll="onScroll">
     <div v-if="!accountStore.loggedIn" class="empty-state">
       <p>Войдите в аккаунт, чтобы увидеть свои скины</p>
     </div>
@@ -337,7 +336,6 @@ async function onConfirmElybyLogin() {
     </template>
     </div>
 
-    <div class="fade fade-bottom" :class="{ show: bottomFaded }"></div>
     </div>
 
     <Transition name="modal">
@@ -400,28 +398,6 @@ async function onConfirmElybyLogin() {
   overflow-y: auto;
   overflow-x: hidden;
   padding-right: 4px;
-}
-
-.fade {
-  position: absolute;
-  left: 0;
-  right: 10px;
-  height: 14px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  z-index: 1;
-}
-.fade.show {
-  opacity: 1;
-}
-.fade-top {
-  top: 0;
-  background: linear-gradient(var(--bg), transparent);
-}
-.fade-bottom {
-  bottom: 0;
-  background: linear-gradient(transparent, var(--bg));
 }
 
 .head {

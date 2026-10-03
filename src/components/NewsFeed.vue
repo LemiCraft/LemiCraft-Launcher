@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue';
 import NewsModal from './NewsModal.vue';
-import { parseInline, replaceDiscordTimestamps, shortDisplayTitle } from '../utils/newsMarkdown.js';
+import { parseInline, previewText, replaceDiscordTimestamps, shortDisplayTitle } from '../utils/newsMarkdown.js';
 import { newsState, fetchNews, loadMoreNews } from '../store/news.js';
 
 const scrollEl = ref(null);
@@ -61,9 +61,8 @@ onMounted(() => fetchNews());
     </div>
 
     <div class="feed-scroll-wrap">
-      <div class="fade fade-top" :class="{ show: topFaded }"></div>
 
-      <div class="feed-scroll" ref="scrollEl" @scroll="onScroll">
+      <div class="feed-scroll edge-fade" :class="{ 'edge-top': topFaded, 'edge-bottom': bottomFaded }" ref="scrollEl" @scroll="onScroll">
         <Transition name="crossfade">
           <div v-if="feedState === 'loading'" key="loading" class="feed-grid">
             <div v-for="i in SKELETON_COUNT" :key="i" class="news-skeleton" :style="{ animationDelay: `${i * 45}ms` }">
@@ -101,7 +100,7 @@ onMounted(() => fetchNews());
                 </template>
               </h3>
               <p>
-                <template v-for="(t, ti) in excerptTokens(item.excerpt, item.mentions)" :key="ti">
+                <template v-for="(t, ti) in excerptTokens(previewText(item.excerpt), item.mentions)" :key="ti">
                   <span v-if="t.kind === 'mention'" class="mention">{{ t.text }}</span>
                   <span v-else-if="t.kind === 'url'" class="link-text">{{ t.text }}</span>
                   <template v-else>{{ t.text }}</template>
@@ -117,7 +116,6 @@ onMounted(() => fetchNews());
         </div>
       </div>
 
-      <div class="fade fade-bottom" :class="{ show: bottomFaded }"></div>
     </div>
 
     <Transition name="modal">
@@ -277,30 +275,8 @@ onMounted(() => fetchNews());
   }
 }
 
-.fade {
-  position: absolute;
-  left: 0;
-  right: 10px;
-  height: 14px;
-  pointer-events: none;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-  z-index: 1;
-}
-.fade.show {
-  opacity: 1;
-}
-.fade-top {
-  top: 0;
-  background: linear-gradient(var(--bg), transparent);
-}
-.fade-bottom {
-  bottom: 0;
-  background: linear-gradient(transparent, var(--bg));
-}
-
 .news-card {
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 16px 18px;
@@ -339,7 +315,7 @@ onMounted(() => fetchNews());
   display: flex;
   flex-direction: column;
   gap: 10px;
-  background: var(--surface);
+  background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 16px 18px;
@@ -439,6 +415,7 @@ onMounted(() => fetchNews());
   color: var(--text-muted);
   line-height: 1.5;
   overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
 @media (prefers-reduced-motion: reduce) {

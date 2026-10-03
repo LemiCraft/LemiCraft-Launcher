@@ -176,6 +176,16 @@ export function parseInline(text, mentions) {
   });
 }
 
+// A card preview has no blockquote styling, so a quote marker just becomes a line break
+export function previewText(text) {
+  return (text || '')
+    .split('\n')
+    .map((line) => line.replace(/^\s*(?:>\s?)+/, '').trimEnd())
+    .join('\n')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+}
+
 // Skips any heading that just repeats the title, matching the old app's dedup.
 export function parseBlocks(markdown, title) {
   const normalizedTitle = (title || '').trim().toLowerCase();

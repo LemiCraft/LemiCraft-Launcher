@@ -131,7 +131,18 @@ onUnmounted(() => {
   color: var(--text-faint);
 }
 
+/* macOS uses its native traffic lights (overlaid top-left) instead of these buttons */
+:global(.mac) .controls {
+  display: none;
+}
+:global(.mac) .drag-fill {
+  padding-left: 80px;
+}
+
+/* Above the login overlay (z-index 120), so the window can still be minimized or closed mid-login */
 .controls {
+  position: relative;
+  z-index: 130;
   -webkit-app-region: no-drag;
   display: flex;
   height: 100%;

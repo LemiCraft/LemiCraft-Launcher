@@ -5,10 +5,10 @@ export const notifications = reactive([]);
 let nextId = 1;
 const AUTO_DISMISS_MS = 2500;
 
-export function pushNotification(text, kind = 'success') {
+export function pushNotification(text, kind = 'success', duration = AUTO_DISMISS_MS) {
   const id = nextId++;
   notifications.push({ id, text, kind });
-  setTimeout(() => dismissNotification(id), AUTO_DISMISS_MS);
+  setTimeout(() => dismissNotification(id), duration);
 }
 
 export function dismissNotification(id) {

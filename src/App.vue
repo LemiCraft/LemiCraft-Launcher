@@ -12,6 +12,7 @@ import ProgressToast from './components/ProgressToast.vue';
 import NotificationStack from './components/NotificationStack.vue';
 import UpdateModal from './components/UpdateModal.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
+import LoginOverlay from './components/LoginOverlay.vue';
 import { refreshAccount } from './store/account.js';
 import { startInstallListeners } from './store/installProgress.js';
 import { skinsState, startElybyLoginListeners } from './store/skins.js';
@@ -97,6 +98,7 @@ onMounted(async () => {
       <NotificationStack />
       <UpdateModal />
       <ConfirmDialog />
+      <LoginOverlay />
       <Transition name="dim">
         <div v-if="skinsState.elybyLoginPending" class="login-dim"></div>
       </Transition>

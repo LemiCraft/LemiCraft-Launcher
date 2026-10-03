@@ -1,9 +1,24 @@
 @import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
 
+/* Registered so the opaque <-> translucent switch can animate instead of snapping */
+@property --bg { syntax: '<color>'; inherits: true; initial-value: #141317; }
+@property --bg-sidebar { syntax: '<color>'; inherits: true; initial-value: #19181d; }
+@property --card { syntax: '<color>'; inherits: true; initial-value: #201f24; }
+@property --hero-b { syntax: '<color>'; inherits: true; initial-value: #1a1720; }
+@property --hero-c { syntax: '<color>'; inherits: true; initial-value: #1c1620; }
+
+/* Scroll-edge fades are a mask on the scroller, not an overlay: an overlay would darken a translucent window */
+@property --edge-top { syntax: '<length>'; inherits: false; initial-value: 0px; }
+@property --edge-bottom { syntax: '<length>'; inherits: false; initial-value: 0px; }
+
 :root {
   --bg: #141317;
   --bg-sidebar: #19181d;
   --surface: #201f24;
+  /* Big page cards; the same as --surface until the window turns translucent */
+  --card: #201f24;
+  --hero-b: #1a1720;
+  --hero-c: #1c1620;
   --surface-2: #28262d;
   --surface-hover: #2e2c33;
   --border: #322f37;
@@ -38,6 +53,31 @@
   --font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Manrope', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+/* Set while the window backdrop (acrylic/mica) is on: the big backgrounds let it show through */
+:root.translucent {
+  --bg: rgba(16, 15, 19, 0.58);
+  --bg-sidebar: rgba(20, 19, 24, 0.5);
+  --card: rgba(34, 32, 39, 0.58);
+  --hero-b: rgba(26, 23, 32, 0.5);
+  --hero-c: rgba(28, 22, 32, 0.46);
+}
+
+/* Added on the first user toggle only, so the startup state doesn't animate in */
+:root.theme-anim {
+  transition: --bg 0.3s ease, --bg-sidebar 0.3s ease, --card 0.3s ease, --hero-b 0.3s ease, --hero-c 0.3s ease;
+}
+
+.edge-fade {
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--edge-top), #000 calc(100% - var(--edge-bottom)), transparent 100%);
+  transition: --edge-top 0.2s ease, --edge-bottom 0.2s ease;
+}
+.edge-fade.edge-top {
+  --edge-top: 14px;
+}
+.edge-fade.edge-bottom {
+  --edge-bottom: 14px;
 }
 
 * {

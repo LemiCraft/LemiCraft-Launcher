@@ -88,7 +88,7 @@ onMounted(() => {
 .hero {
   position: relative;
   border-radius: var(--radius-lg);
-  background: linear-gradient(160deg, var(--surface) 0%, #1a1720 60%, #1c1620 100%);
+  background: linear-gradient(160deg, var(--card) 0%, var(--hero-b) 60%, var(--hero-c) 100%);
   border: 1px solid var(--border);
   padding: 34px 36px;
   display: flex;

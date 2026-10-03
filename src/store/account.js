@@ -8,10 +8,8 @@ export const accountStore = reactive({
   loggedIn: false,
 });
 
-export async function refreshAccount() {
-  if (!window.__TAURI_INTERNALS__) return;
-  const { invoke } = await import('@tauri-apps/api/core');
-  const info = await invoke('get_current_account');
+// `info` is what the backend reports as the current account (AccountInfo), or null for a guest
+export async function applyAccount(info) {
   if (info) {
     accountStore.username = info.username;
     accountStore.uuid = info.uuid;
@@ -19,6 +17,7 @@ export async function refreshAccount() {
     accountStore.loggedIn = true;
     if (info.skin_url) {
       try {
+        const { invoke } = await import('@tauri-apps/api/core');
         accountStore.skinUrl = await invoke('fetch_skin_data_uri', { url: info.skin_url, force: false });
       } catch (err) {
         console.error('failed to inline skin as data URI:', err);
@@ -34,4 +33,10 @@ export async function refreshAccount() {
     accountStore.provider = null;
     accountStore.loggedIn = false;
   }
+}
+
+export async function refreshAccount() {
+  if (!window.__TAURI_INTERNALS__) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await applyAccount(await invoke('get_current_account'));
 }
