@@ -337,6 +337,22 @@ fn spawn_with_log_streaming(
     use std::io::{BufRead, BufReader};
     use std::process::Stdio;
 
+    #[cfg(unix)]
+    if on_launch == "close" {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+        command.stdout(Stdio::null());
+        command.stderr(Stdio::null());
+        let _child = command.spawn().map_err(|err| err.to_string())?;
+        let _ = app.emit("game-started", ());
+        let app_handle = app.clone();
+        std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            app_handle.exit(0);
+        });
+        return Ok(());
+    }
+
     command.stdout(Stdio::piped());
     command.stderr(Stdio::piped());
 

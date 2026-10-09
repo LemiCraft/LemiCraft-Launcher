@@ -131,6 +131,25 @@ onMounted(async () => {
   box-shadow: none;
 }
 
+:global(.mac) body,
+:global(.mac) #app {
+  background: transparent;
+}
+
+:global(.mac) .shell {
+  border-radius: 16px;
+  background: var(--bg);
+}
+
+:global(.mac) .shell.logs-shell {
+  border-radius: 14px;
+  background: var(--bg);
+}
+
+:global(.mac) .shell.maximized {
+  border-radius: 0;
+}
+
 .shell.closing {
   animation: shell-out 0.18s ease forwards;
 }

@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/github/v/release/LemiCraft/LemiCraft-Launcher" alt="version"/>
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2"/>
   <img src="https://img.shields.io/badge/Vue-3-42b883" alt="Vue 3"/>
-  <img src="https://img.shields.io/badge/platform-Windows-lightgrey" alt="Windows"/>
+  <img src="https://img.shields.io/badge/platform%20%7C%20Windows-macOS-lightgrey?labelColor=0078D4" alt="platform | Windows | macOS"/>
 </p>
 
 ---
@@ -57,7 +57,7 @@ npm run tauri dev
 npm run tauri build
 ```
 
-Готовые файлы (`.exe`/установщик) появятся в `src-tauri/target/release/bundle/`
+Готовые файлы (`.exe` на Windows, `.app`/`.dmg` на macOS) появятся в `src-tauri/target/release/bundle/`
 
 ## Стек
 

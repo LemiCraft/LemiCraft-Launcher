@@ -146,9 +146,13 @@ async fn read_session_cookies(app: &AppHandle) -> Result<SkinSession, String> {
             .get_webview_window("elyby-web")
             .ok_or_else(|| "Окно входа уже закрыто".to_string())
             .and_then(|window| {
-                window
-                    .cookies_for_url(Url::parse("https://ely.by").unwrap())
-                    .map_err(|err| err.to_string())
+                let mut cookies = window.cookies().unwrap_or_default();
+                if cookies.is_empty() {
+                    if let Ok(c) = window.cookies_for_url(Url::parse("https://ely.by").unwrap()) {
+                        cookies = c;
+                    }
+                }
+                Ok(cookies)
             });
         let _ = tx.send(result);
     })

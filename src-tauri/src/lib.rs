@@ -40,9 +40,8 @@ async fn open_logs_window(app: tauri::AppHandle) -> Result<(), String> {
                     .title("Логи игры — LemiCraft")
                     .inner_size(640.0, 480.0)
                     .decorations(false);
-                // macOS keeps its own traffic lights over the page, which leaves room for them
                 #[cfg(target_os = "macos")]
-                let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+                let builder = builder.transparent(true).shadow(true);
                 builder.build().map_err(|err| err.to_string())?;
                 Ok(())
             })();
@@ -117,7 +116,7 @@ pub fn run() {
       }
       #[cfg(target_os = "macos")]
       {
-        builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+        builder = builder.shadow(true);
       }
       builder.build()?;
       window_effect::apply(app.handle(), translucent);
