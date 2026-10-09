@@ -24,7 +24,7 @@ pub struct LauncherSettings {
     pub crash_analyzer: bool,
     #[serde(default = "default_true")]
     pub discord_rpc: bool,
-    #[serde(default)]
+    #[serde(default = "default_translucent")]
     pub translucent: bool,
 }
 
@@ -34,6 +34,13 @@ fn default_ram_gb() -> u32 {
 
 fn default_true() -> bool {
     true
+}
+
+fn default_translucent() -> bool {
+    #[cfg(target_os = "macos")]
+    { true }
+    #[cfg(not(target_os = "macos"))]
+    { false }
 }
 
 fn default_jvm_args() -> String {
@@ -55,7 +62,7 @@ impl Default for LauncherSettings {
             show_logs: false,
             crash_analyzer: true,
             discord_rpc: true,
-            translucent: false,
+            translucent: default_translucent(),
         }
     }
 }

@@ -120,13 +120,80 @@ const quickLinks = [
     await invoke('open_logs_window');
   } },
 ];
+
+const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
+const isMac = typeof navigator !== 'undefined' && (/Macintosh|Mac OS X|MacPPC|MacIntel/i.test(navigator.userAgent || '') || navigator.platform?.toUpperCase().indexOf('MAC') >= 0);
+
+let tauriWin = null;
+async function getTauriWin() {
+  if (!tauriWin) {
+    const { getCurrentWindow } = await import('@tauri-apps/api/window');
+    tauriWin = getCurrentWindow();
+  }
+  return tauriWin;
+}
+
+const isWinMaximized = ref(false);
+
+async function minimizeApp() {
+  if (isTauri) (await getTauriWin()).minimize();
+}
+async function toggleMaximizeApp() {
+  if (isTauri) (await getTauriWin()).toggleMaximize();
+}
+async function closeApp() {
+  if (!isTauri) return;
+  const { modsState } = await import('../store/mods.js');
+  const { showConfirmDialog } = await import('../store/confirmDialog.js');
+  if (modsState.applying) {
+    const confirmed = await showConfirmDialog({
+      title: 'Установка модов не завершена',
+      message: 'Если закрыть лаунчер сейчас, установка прервётся и часть файлов может остаться в неполном состоянии',
+      buttons: [
+        { label: 'Закрыть', value: true, variant: 'danger' },
+        { label: 'Подождать', value: false, variant: 'ghost' },
+      ],
+    });
+    if (!confirmed) return;
+  }
+  const win = await getTauriWin();
+  win.destroy();
+}
+
+onMounted(async () => {
+  if (!isTauri) return;
+  const win = await getTauriWin();
+  isWinMaximized.value = await win.isMaximized();
+  win.onResized(async () => {
+    isWinMaximized.value = await win.isMaximized();
+  });
+});
 </script>
 
 <template>
   <aside class="sidebar" data-tauri-drag-region>
-    <div class="brand">
+    <!-- macOS Traffic Lights -->
+    <div v-if="isMac" class="mac-traffic-lights" data-tauri-drag-region>
+      <button class="mac-light light-close" title="Закрыть" @click="closeApp">
+        <svg viewBox="0 0 10 10" width="6" height="6">
+          <path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button class="mac-light light-minimize" title="Свернуть" @click="minimizeApp">
+        <svg viewBox="0 0 10 10" width="6" height="6">
+          <path d="M1 5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+        </svg>
+      </button>
+      <button class="mac-light light-maximize" :title="isWinMaximized ? 'Восстановить' : 'Развернуть'" @click="toggleMaximizeApp">
+        <svg viewBox="0 0 10 10" width="6" height="6">
+          <path d="M2 8l6-6M8 8V2H2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="brand" data-tauri-drag-region>
       <img class="brand-mark" src="../assets/logo.png" alt="LemiCraft" />
-      <span class="brand-name">Lemi<b>Craft</b></span>
+      <span class="brand-name" data-tauri-drag-region>Lemi<b>Craft</b></span>
     </div>
 
     <nav class="nav">
@@ -214,13 +281,69 @@ const quickLinks = [
   border-right: 1px solid var(--border);
   display: flex;
   flex-direction: column;
-  padding: 20px 14px;
+  padding: 14px 14px 20px;
   gap: 8px;
 }
 
-/* Clears the macOS traffic lights */
-:global(.mac) .sidebar {
-  padding-top: 44px;
+.mac-traffic-lights {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 6px 12px;
+  -webkit-app-region: drag;
+}
+
+.mac-light {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 0.5px solid rgba(0, 0, 0, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  color: transparent;
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
+  transition: transform 0.1s ease, filter 0.12s ease;
+  -webkit-app-region: no-drag;
+}
+
+.mac-traffic-lights:hover .mac-light {
+  color: rgba(0, 0, 0, 0.68);
+}
+
+.light-close {
+  background: #ff5f56;
+  border-color: #e0443e;
+}
+.light-close:hover {
+  background: #ff6961;
+}
+.light-close:active {
+  background: #bf4942;
+}
+
+.light-minimize {
+  background: #ffbd2e;
+  border-color: #dea123;
+}
+.light-minimize:hover {
+  background: #ffc73d;
+}
+.light-minimize:active {
+  background: #bf8e22;
+}
+
+.light-maximize {
+  background: #27c93f;
+  border-color: #1aab29;
+}
+.light-maximize:hover {
+  background: #34d64c;
+}
+.light-maximize:active {
+  background: #1d9630;
 }
 
 .brand {

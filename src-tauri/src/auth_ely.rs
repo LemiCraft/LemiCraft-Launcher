@@ -136,15 +136,12 @@ fn run_login(app: &AppHandle, attempt: u64) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x08000000;
-
 fn find_port_owner(port: u16) -> Option<String> {
-    #[cfg(windows)]
     use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
 
     let mut netstat_cmd = std::process::Command::new("netstat");
     netstat_cmd.args(["-ano", "-p", "TCP"]);
-    #[cfg(windows)]
     netstat_cmd.creation_flags(CREATE_NO_WINDOW);
     let output = netstat_cmd.output().ok()?;
     let text = String::from_utf8_lossy(&output.stdout);
@@ -168,7 +165,6 @@ fn find_port_owner(port: u16) -> Option<String> {
 
     let mut tasklist_cmd = std::process::Command::new("tasklist");
     tasklist_cmd.args(["/FI", &format!("PID eq {pid}"), "/FO", "CSV", "/NH"]);
-    #[cfg(windows)]
     tasklist_cmd.creation_flags(CREATE_NO_WINDOW);
     let tasklist = tasklist_cmd.output().ok()?;
     let tasklist_text = String::from_utf8_lossy(&tasklist.stdout);
@@ -178,6 +174,21 @@ fn find_port_owner(port: u16) -> Option<String> {
     } else {
         Some(name)
     }
+}
+
+#[cfg(not(windows))]
+fn find_port_owner(port: u16) -> Option<String> {
+    let output = std::process::Command::new("lsof")
+        .args(["-nP", &format!("-iTCP:{port}"), "-sTCP:LISTEN"])
+        .output()
+        .ok()?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    for line in text.lines().skip(1) {
+        if let Some(cmd) = line.split_whitespace().next() {
+            return Some(cmd.to_string());
+        }
+    }
+    None
 }
 
 fn parse_redirect_uri(redirect_uri: &str) -> Result<(u16, String), String> {

@@ -263,39 +263,55 @@ fn extract_query_param(url: &Url, key: &str) -> Option<String> {
 fn get_authorization_code(app: &AppHandle) -> Result<String, String> {
     let (tx, rx) = mpsc::channel::<Result<String, String>>();
     let tx_nav = tx.clone();
-
-    let window = WebviewWindowBuilder::new(app, "msa-login", WebviewUrl::External(authorize_url()))
-        .title("Вход через Microsoft")
-        .inner_size(480.0, 640.0)
-        .center()
-        .on_navigation(move |url| {
-            if url.as_str().starts_with(REDIRECT_URI) {
-                if let Some(code) = extract_query_param(url, "code") {
-                    let _ = tx_nav.send(Ok(code));
-                } else {
-                    let err = extract_query_param(url, "error_description")
-                        .or_else(|| extract_query_param(url, "error"))
-                        .unwrap_or_else(|| "Вход не завершён".to_string());
-                    let _ = tx_nav.send(Err(err));
-                }
-                return false;
-            }
-            true
-        })
-        .build()
-        .map_err(|err| err.to_string())?;
-
     let tx_close = tx.clone();
-    window.on_window_event(move |event| {
-        if let tauri::WindowEvent::Destroyed = event {
-            let _ = tx_close.send(Err("Окно входа закрыто".to_string()));
-        }
-    });
+
+    let (win_tx, win_rx) = mpsc::channel::<Result<(), String>>();
+    let app_handle = app.clone();
+
+    app.run_on_main_thread(move || {
+        let result = (|| {
+            let window = WebviewWindowBuilder::new(&app_handle, "msa-login", WebviewUrl::External(authorize_url()))
+                .title("Вход через Microsoft")
+                .inner_size(480.0, 640.0)
+                .center()
+                .on_navigation(move |url| {
+                    if url.as_str().starts_with(REDIRECT_URI) {
+                        if let Some(code) = extract_query_param(url, "code") {
+                            let _ = tx_nav.send(Ok(code));
+                        } else {
+                            let err = extract_query_param(url, "error_description")
+                                .or_else(|| extract_query_param(url, "error"))
+                                .unwrap_or_else(|| "Вход не завершён".to_string());
+                            let _ = tx_nav.send(Err(err));
+                        }
+                        return false;
+                    }
+                    true
+                })
+                .build()
+                .map_err(|err| err.to_string())?;
+
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::Destroyed = event {
+                    let _ = tx_close.send(Err("Окно входа закрыто".to_string()));
+                }
+            });
+
+            Ok(())
+        })();
+        let _ = win_tx.send(result);
+    })
+    .map_err(|err| err.to_string())?;
+
+    win_rx.recv().map_err(|_| "Канал закрылся до создания окна".to_string())??;
 
     let result = rx.recv_timeout(Duration::from_secs(300)).map_err(|_| "Истекло время ожидания входа".to_string())?;
-    if let Some(w) = app.get_webview_window("msa-login") {
-        let _ = w.close();
-    }
+    let app_close = app.clone();
+    let _ = app.run_on_main_thread(move || {
+        if let Some(w) = app_close.get_webview_window("msa-login") {
+            let _ = w.close();
+        }
+    });
     result
 }
 

@@ -141,7 +141,8 @@ pub async fn download_and_install_update(app: AppHandle, download_url: String, s
         }
         let total = response.content_length().unwrap_or(0);
 
-        let file_name = download_url.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or("LemiCraft_Installer.exe");
+        let default_name = if cfg!(target_os = "macos") { "LemiCraft_Installer.dmg" } else { "LemiCraft_Installer.exe" };
+        let file_name = download_url.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or(default_name);
         let temp_path = std::env::temp_dir().join(file_name);
         let mut file = std::fs::File::create(&temp_path).map_err(|err| err.to_string())?;
 

@@ -7,7 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "build:mac:arm64": "./scripts/build-mac.sh arm64",
+    "build:mac:x86": "./scripts/build-mac.sh x86",
+    "build:mac:universal": "./scripts/build-mac.sh universal",
+    "build:mac:all": "./scripts/build-mac.sh all"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1",

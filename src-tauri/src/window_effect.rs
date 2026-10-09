@@ -19,7 +19,12 @@ pub fn is_supported() -> bool {
     windows_build() >= MICA_MIN_BUILD
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub fn is_supported() -> bool {
+    true
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn is_supported() -> bool {
     false
 }
@@ -72,5 +77,36 @@ pub fn apply(app: &AppHandle, enabled: bool) {
     }
 }
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub fn apply(app: &AppHandle, enabled: bool) {
+    use std::sync::Mutex;
+    use tauri::window::{Color, Effect, EffectsBuilder};
+    use tauri::Manager;
+
+    static LAST: Mutex<Option<bool>> = Mutex::new(None);
+
+    let Some(window) = app.get_webview_window("main") else { return };
+    {
+        let mut last = LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if *last == Some(enabled) {
+            return;
+        }
+        *last = Some(enabled);
+    }
+
+    if enabled {
+        let effects = EffectsBuilder::new()
+            .effect(Effect::HudWindow)
+            .radius(16.0)
+            .state(tauri::window::EffectState::Active)
+            .build();
+        let _ = window.set_effects(effects);
+        let _ = window.set_background_color(Some(Color(0, 0, 0, 0)));
+    } else {
+        let _ = window.set_effects(None);
+        let _ = window.set_background_color(Some(Color(20, 19, 23, 255)));
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
 pub fn apply(_app: &AppHandle, _enabled: bool) {}
