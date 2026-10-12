@@ -8,6 +8,7 @@ export const updateState = reactive({
   percent: null,
   bytes: 0,
   error: '',
+  fallbackOffered: false,
 });
 
 export async function checkForUpdate() {
@@ -57,16 +58,34 @@ export async function startUpdateDownload() {
     });
   }
 
+  const inApp = updateState.info.mode === 'in_app';
   try {
-    await invoke('download_and_install_update', {
-      downloadUrl: updateState.info.download_url,
-      sha256: updateState.info.sha256,
-    });
+    if (inApp) {
+      // Doesn't return on success: the launcher restarts into the new version
+      await invoke('install_update_in_app');
+    } else {
+      await invoke('download_and_install_update', {
+        downloadUrl: updateState.info.download_url,
+        sha256: updateState.info.sha256,
+      });
+    }
     updateState.installing = true;
   } catch (err) {
     updateState.error = String(err);
+    // The in-place update didn't work (read-only folder, manifest not published yet, no network): keep retry and also offer the download page
+    if (inApp) updateState.fallbackOffered = true;
   } finally {
     updateState.downloading = false;
+  }
+}
+
+export async function openUpdatePage() {
+  if (!updateState.info) return;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('open_external', { target: updateState.info.download_url });
+  } catch (err) {
+    updateState.error = String(err);
   }
 }
 

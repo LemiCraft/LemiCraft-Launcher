@@ -263,11 +263,12 @@ async function onConfirmElybyLogin() {
     <div class="skins-scroll-wrap">
 
     <div class="skins-scroll edge-fade" :class="{ 'edge-top': topFaded, 'edge-bottom': bottomFaded }" ref="scrollEl" @scroll="onScroll">
-    <div v-if="!accountStore.loggedIn" class="empty-state">
+    <Transition name="swap" mode="out-in" @after-enter="onScroll">
+    <div v-if="!accountStore.loggedIn" key="guest" class="empty-state">
       <p>Войдите в аккаунт, чтобы увидеть свои скины</p>
     </div>
 
-    <div v-else-if="needsElybyLogin" class="elyby-gate">
+    <div v-else-if="needsElybyLogin" key="gate" class="elyby-gate">
       <p class="gate-title">У ely.by нет собственного API для скинов</p>
       <p class="gate-text">Управление скинами возможно только через сессию сайта ely.by — войдите один раз во встроенном окне, оно закроется само, как только вы войдёте</p>
       <div class="gate-actions">
@@ -281,7 +282,7 @@ async function onConfirmElybyLogin() {
       <p v-if="skinsState.error" class="error-text">{{ skinsState.error }}</p>
     </div>
 
-    <template v-else>
+    <div v-else key="library">
       <div class="grid-wrap">
         <Transition name="crossfade">
           <div v-if="feedState === 'loading'" key="loading" class="grid">
@@ -333,7 +334,8 @@ async function onConfirmElybyLogin() {
       </div>
 
       <button v-if="isElyBy && skinsState.elybySessionReady" class="forget-link" @click="forgetElybySession">Отвязать сессию ely.by</button>
-    </template>
+    </div>
+    </Transition>
     </div>
 
     </div>
@@ -556,6 +558,16 @@ async function onConfirmElybyLogin() {
 
 .grid-wrap {
   position: relative;
+}
+
+/* Switches between "not signed in" / "connect ely.by" / the skin list; the three never share a screen */
+.swap-enter-active,
+.swap-leave-active {
+  transition: opacity 0.18s ease;
+}
+.swap-enter-from,
+.swap-leave-to {
+  opacity: 0;
 }
 
 .crossfade-enter-active,
@@ -909,6 +921,8 @@ async function onConfirmElybyLogin() {
   .thumb-skeleton {
     animation: none;
   }
+  .swap-enter-active,
+  .swap-leave-active,
   .crossfade-enter-active,
   .crossfade-leave-active,
   .card-enter-active,

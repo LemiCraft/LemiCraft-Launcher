@@ -2,6 +2,8 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { modsState } from '../store/mods.js';
 import { showConfirmDialog } from '../store/confirmDialog.js';
+import { isMac, isTauri } from '../utils/platform.js';
+import MacTrafficLights from './MacTrafficLights.vue';
 
 const props = defineProps({
   title: { type: String, default: '' },
@@ -25,9 +27,6 @@ async function confirmCloseWhileApplying() {
     ],
   });
 }
-
-const isTauri = typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__;
-const isMac = typeof navigator !== 'undefined' && (/Macintosh|Mac OS X|MacPPC|MacIntel/i.test(navigator.userAgent || '') || navigator.platform?.toUpperCase().indexOf('MAC') >= 0);
 
 let tauriWindow = null;
 async function getTauriWindow() {
@@ -66,8 +65,7 @@ onMounted(async () => {
   unsubscribe = await win.onResized(async () => {
     isMaximized.value = await win.isMaximized();
   });
-  // Safety net for close paths that skip the button above (Alt+F4, taskbar) — win.close()/destroy()
-  // from the button also flows through here, but destroy() bypasses it, so no double prompt
+  // Safety net for close paths that skip the button (Alt+F4, taskbar); the button's destroy() bypasses it, so no double prompt
   if (props.guardMods) {
     unsubscribeClose = await win.onCloseRequested(async (event) => {
       if (!modsState.applying) return;
@@ -80,28 +78,22 @@ onUnmounted(() => {
   if (typeof unsubscribe === 'function') unsubscribe();
   if (typeof unsubscribeClose === 'function') unsubscribeClose();
 });
+
+// The main window's macOS traffic lights live in the sidebar and drive these
+defineExpose({ minimize, toggleMaximize, close });
 </script>
 
 <template>
-  <div class="window-controls-bar" :class="{ 'is-mac': isMac, 'has-sidebar': guardMods }" @dblclick="toggleMaximize">
-    <!-- Standalone windows on macOS (e.g. Logs window): traffic lights on left -->
+  <div class="window-controls-bar" :class="{ 'is-mac': isMac }" @dblclick="toggleMaximize">
+    <!-- Standalone windows on macOS (logs) carry their own traffic lights; the main window's are in the sidebar -->
     <div v-if="isMac && !guardMods" class="mac-controls-left">
-      <button class="mac-btn mac-close" title="Закрыть" @click="close">
-        <svg viewBox="0 0 10 10" width="6" height="6"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-      </button>
-      <button class="mac-btn mac-minimize" title="Свернуть" @click="minimize">
-        <svg viewBox="0 0 10 10" width="6" height="6"><path d="M1 5h8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-      </button>
-      <button class="mac-btn mac-maximize" :title="isMaximized ? 'Восстановить' : 'Развернуть'" @click="toggleMaximize">
-        <svg viewBox="0 0 10 10" width="6" height="6"><path d="M2 8l6-6M8 8V2H2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
+      <MacTrafficLights :maximized="isMaximized" @close="close" @minimize="minimize" @maximize="toggleMaximize" />
     </div>
 
     <div class="drag-fill" data-tauri-drag-region>
       <span v-if="title" class="bar-title">{{ title }}</span>
     </div>
 
-    <!-- Windows / Linux controls on the right -->
     <div v-if="!isMac" class="controls">
       <button class="ctrl" title="Свернуть" @click="minimize">
         <svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 5h10" stroke="currentColor" stroke-width="1" /></svg>
@@ -186,66 +178,8 @@ onUnmounted(() => {
   -webkit-app-region: no-drag;
   display: flex;
   align-items: center;
-  gap: 8px;
   padding: 0 16px;
   flex-shrink: 0;
   height: 100%;
 }
-
-.mac-btn {
-  width: 12px;
-  height: 12px;
-  min-width: 12px;
-  min-height: 12px;
-  border-radius: 50%;
-  border: 0.5px solid rgba(0, 0, 0, 0.25);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  padding: 0;
-  color: transparent;
-  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.15);
-  flex-shrink: 0;
-  aspect-ratio: 1 / 1;
-  transition: transform 0.1s ease, filter 0.12s ease;
-}
-
-.mac-controls-left:hover .mac-btn {
-  color: rgba(0, 0, 0, 0.68);
-}
-
-.mac-close {
-  background: #ff5f56;
-  border-color: #e0443e;
-}
-.mac-close:hover {
-  background: #ff6961;
-}
-.mac-close:active {
-  background: #bf4942;
-}
-
-.mac-minimize {
-  background: #ffbd2e;
-  border-color: #dea123;
-}
-.mac-minimize:hover {
-  background: #ffc73d;
-}
-.mac-minimize:active {
-  background: #bf8e22;
-}
-
-.mac-maximize {
-  background: #27c93f;
-  border-color: #1aab29;
-}
-.mac-maximize:hover {
-  background: #34d64c;
-}
-.mac-maximize:active {
-  background: #1d9630;
-}
-
 </style>

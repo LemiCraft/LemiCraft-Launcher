@@ -65,8 +65,7 @@ export async function forgetElybySession() {
 const SKINS_CACHE_TTL_MS = 2 * 60 * 1000;
 let lastLoadedKey = null;
 let lastLoadedAt = 0;
-// Bumped on every loadSkins() call so an earlier, still-in-flight call can detect a newer
-// one has started and discard its own (potentially stale) result instead of overwriting it
+// Bumped on every loadSkins() call so an older in-flight call can tell a newer one started and discard its stale result
 let loadGeneration = 0;
 
 function mapElyItems(elyItems, dbItems) {
@@ -86,8 +85,7 @@ function mapElyItems(elyItems, dbItems) {
 }
 
 function mapLicenseItems(items) {
-  // Skins can carry a non-null elybyId here when the same username was once used through
-  // ely.by too — those aren't part of this (license) account's own library.
+  // A non-null elybyId means the username was also used through ely.by; those skins aren't this license account's library
   return items
     .filter((s) => s.elybyId == null)
     .map((s) => ({
@@ -124,8 +122,7 @@ export async function loadSkins({ force = false } = {}) {
   skinsState.error = '';
   try {
     if (isElyBy()) {
-      // Inlined rather than checkElybySession(): that writes elybySessionReady unconditionally,
-      // which an older overlapping call could still do after this generation check, clobbering it
+      // Inlined rather than checkElybySession(): it writes elybySessionReady unconditionally, which an older overlapping call could clobber
       const ready = (await withInvoke((invoke) => invoke('has_elyby_skin_session'))) ?? false;
       if (myGeneration !== loadGeneration) return;
       skinsState.elybySessionReady = ready;

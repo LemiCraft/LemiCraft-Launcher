@@ -1,9 +1,7 @@
 const DISCORD_TS_RE = /<t:(\d+)(?::([tTdDfFRsS]))?>/g;
-// A role mention is "@<emoji><Role Name>". A second capitalized word ("Министр Счастья") isn't swept in:
-// it swallowed the start of the next sentence ("@Лемимист Через 8 минут..."), confirmed live
+// A role mention is "@<emoji><Role Name>"; a second capitalized word isn't swept in (it swallowed the next sentence's start)
 const MENTION_RE = /@(?:\p{Extended_Pictographic}\u{FE0F}?[^\s,.!?;:)(]*|[^\s,.!?;:)(]+)/gu;
-// https only — open_external() (the only way these links get opened) now rejects plain http,
-// so linkifying it would render a clickable link that silently fails when clicked
+// https only: open_external() rejects plain http, so such a link would be clickable but silently fail
 const URL_RE = /https:\/\/[^\s<>"]+[^\s<>".,;!?)\]']/gi;
 
 const RU_MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
@@ -144,8 +142,7 @@ function escapeRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Matches the backend's resolved mentions exactly (longest-first so one can't shadow a longer overlap);
-// the fuzzy regex is only the fallback for stale cached items that predate `mentions`
+// Matches the backend's resolved mentions exactly (longest first); the fuzzy regex is only a fallback for stale cached items
 function mentionRegexFor(mentions) {
   if (!mentions || mentions.length === 0) return MENTION_RE;
   const sorted = [...mentions].map((m) => m.raw).filter(Boolean).sort((a, b) => b.length - a.length);
@@ -164,8 +161,7 @@ function tokenizeMentions(text, mentions) {
   return tokens;
 }
 
-// A styled segment (e.g. **bold**) still gets tokenized for urls/mentions — Discord nests them
-// (`# **title**`, `**https://...**`) and a link/mention inside bold text must stay clickable.
+// A styled segment (e.g. **bold**) is still tokenized for urls/mentions: Discord nests them, and they must stay clickable
 export function parseInline(text, mentions) {
   return parseInlineStyles(text).flatMap((seg) => {
     const style = seg.bold || seg.italic || seg.strike || seg.code || seg.spoiler

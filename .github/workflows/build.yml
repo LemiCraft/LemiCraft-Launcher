@@ -1,0 +1,129 @@
+# Dry run: builds every platform and keeps the files as workflow artifacts. Publishes nothing and needs no secrets.
+name: Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  version:
+    name: Read version
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v7
+      # The version lives only in src-tauri/Cargo.toml; Tauri and the frontend read it from there
+      - name: Version must be a plain x.y.z
+        run: |
+          version=$(grep -m1 '^version' src-tauri/Cargo.toml | sed -E 's/version *= *"([^"]+)"/\1/')
+          echo "Building $version"
+          echo "$version" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$'
+
+  linux:
+    name: Linux (deb, rpm, AppImage)
+    needs: version
+    # Oldest glibc we ship for: binaries built here also run on older distros such as SteamOS
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file patchelf libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      - run: npm run tauri build -- --bundles deb,rpm,appimage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: linux
+          path: |
+            src-tauri/target/release/bundle/deb/*.deb
+            src-tauri/target/release/bundle/rpm/*.rpm
+            src-tauri/target/release/bundle/appimage/*.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Windows (installer, portable)
+    needs: version
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # "all" targets would also try an MSI; we ship only the NSIS installer and the bare exe
+      - run: npm run tauri build -- --bundles nsis
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows
+          path: |
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/LemiCraft-Launcher.exe
+          if-no-files-found: error
+
+  macos:
+    name: macOS (universal)
+    needs: version
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - name: Xcode tooling (the Icon Composer .icon needs actool 26+)
+        run: |
+          xcodebuild -version
+          xcrun actool --version || true
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: universal
+      - run: npm ci
+      # signingIdentity "-" is an ad-hoc signature: no Apple account, but arm64 builds need at least that to launch
+      # Without TAURI_BUNDLER_DMG_IGNORE_CI Tauri skips laying out the dmg window (background, icon positions) on CI
+      - env:
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+        run: >
+          npm run tauri build --
+          --target universal-apple-darwin
+          --bundles app,dmg
+          --config '{"bundle":{"macOS":{"signingIdentity":"-"}}}'
+      # Tauri gives the disk the app icon; this puts the dedicated disk icon into the finished dmg
+      - name: Disk icon for the dmg
+        run: bash packaging/macos/set-volume-icon.sh src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg packaging/macos/VolumeIcon.icns
+      - name: Zip the .app
+        run: |
+          cd src-tauri/target/universal-apple-darwin/release/bundle/macos
+          ditto -c -k --sequesterRsrc --keepParent *.app "${{ runner.temp }}/app-universal.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-universal
+          path: |
+            src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg
+            ${{ runner.temp }}/app-universal.zip
+          if-no-files-found: error

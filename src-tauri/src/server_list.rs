@@ -55,8 +55,7 @@ fn load_servers_dat() -> LoadResult {
     }
 }
 
-// Called from run() on every launch (install() itself is idempotent and runs every time, not just
-// on a fresh install) — so this just keeps re-adding the entry if it's ever missing, on purpose
+// Runs on every launch and is idempotent, so the entry is re-added whenever it's missing, on purpose
 pub fn ensure_lemicraft_server_entry() {
     let mut doc = match load_servers_dat() {
         LoadResult::Parsed(doc) => doc,
@@ -67,8 +66,7 @@ pub fn ensure_lemicraft_server_entry() {
 
     match doc.servers.iter_mut().find(|s| s.ip == ip) {
         Some(entry) => {
-            // Two independent things an old/foreign entry could have wrong — fix whichever applies,
-            // each checked on its own so a launch after only one was fixed still catches the other
+            // Two independent things an old/foreign entry can have wrong, each checked on its own so fixing one still catches the other
             let mut changed = false;
             if entry.hidden == Some(1) {
                 entry.hidden = None;

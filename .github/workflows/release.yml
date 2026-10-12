@@ -1,0 +1,275 @@
+# Builds every platform and creates a DRAFT release holding all files. Started only by the "Run workflow" button; the tag
+# is created when the draft is published (a tag trigger would fire again on that publish). The notes are written in the
+# draft on GitHub and publishing stays manual, so nothing reaches the site or Discord until Publish is pressed.
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  draft:
+    name: Draft release
+    runs-on: ubuntu-22.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - id: version
+        name: The release tag comes from src-tauri/Cargo.toml and must match a pushed tag
+        run: |
+          version=$(grep -m1 '^version' src-tauri/Cargo.toml | sed -E 's/version *= *"([^"]+)"/\1/')
+          if [ "${{ github.ref_type }}" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match the Cargo.toml version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+      - name: Create the draft with the notes template
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # A published release must never get its files replaced: the Windows updater trusts their sha256
+            if [ "$(gh release view "$TAG" --json isDraft -q .isDraft)" != "true" ]; then
+              echo "::error::release $TAG is already published; bump the version in Cargo.toml"
+              exit 1
+            fi
+            echo "Draft for $TAG already exists, keeping it"
+            exit 0
+          fi
+          prev=$(git tag --sort=-v:refname | grep -v -x "$TAG" | head -n1 || true)
+          {
+            echo '### **Что нового:**'
+            echo
+            echo '- ЗАПОЛНИТЬ'
+            if [ -n "$prev" ]; then
+              echo
+              echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$prev...$TAG"
+            fi
+          } > notes.md
+          gh release create "$TAG" --draft --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
+
+  linux:
+    name: Linux (deb, rpm, AppImage)
+    needs: draft
+    # Oldest glibc we ship for: binaries built here also run on older distros such as SteamOS
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential curl wget file patchelf libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # createUpdaterArtifacts is switched on here only: a local build must not ask for the private key
+      - name: Build and sign the update file
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri build -- --bundles deb,rpm,appimage --config '{"bundle":{"createUpdaterArtifacts":true}}'
+      - name: Name the files the way the site expects and upload them
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: |
+          v='${{ needs.draft.outputs.version }}'
+          b=src-tauri/target/release/bundle
+          mkdir -p out sigs
+          cp "$b"/deb/*.deb "out/LemiCraft-Launcher-$v-amd64.deb"
+          cp "$b"/rpm/*.rpm "out/LemiCraft-Launcher-$v-x86_64.rpm"
+          cp "$b"/appimage/*.AppImage "out/LemiCraft-Launcher-$v-x86_64.AppImage"
+          # The signature goes into latest.json only: a .sig next to the AppImage could be mistaken for a download by the site
+          cp "$b"/appimage/*.AppImage.sig "sigs/LemiCraft-Launcher-$v-x86_64.AppImage.sig"
+          gh release upload "$TAG" out/* --clobber
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sig-linux
+          path: sigs/*.sig
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7
+        with:
+          name: deb-linux
+          path: out/*.deb
+          if-no-files-found: error
+
+  flatpak:
+    name: Flatpak
+    # Repackages the .deb built above, so it is not part of the manifest job: a Flatpak failure must not block the updater
+    needs: [draft, linux]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: deb-linux
+          path: deb
+      - name: Flatpak tooling and the GNOME runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//51 org.gnome.Sdk//51
+      - name: Build the bundle
+        run: bash packaging/flatpak/build.sh "$(realpath deb/*.deb)"
+      - name: Name it and upload it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: |
+          v='${{ needs.draft.outputs.version }}'
+          cp packaging/flatpak/LemiCraft-Launcher.flatpak "LemiCraft-Launcher-$v.flatpak"
+          gh release upload "$TAG" "LemiCraft-Launcher-$v.flatpak" --clobber
+
+  windows:
+    name: Windows (installer, portable)
+    needs: draft
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm ci
+      # Windows updates through our own installer flow (sha256 from the API), so no updater artifacts here
+      - run: npm run tauri build -- --bundles nsis
+      - name: Name the files the way the site expects and upload them
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: |
+          v='${{ needs.draft.outputs.version }}'
+          mkdir -p out
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe "out/LemiCraft-Launcher-$v-installer.exe"
+          cp src-tauri/target/release/LemiCraft-Launcher.exe "out/LemiCraft-Launcher-$v-portable.exe"
+          gh release upload "$TAG" out/* --clobber
+
+  macos:
+    name: macOS (universal)
+    needs: draft
+    runs-on: macos-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: universal
+      - run: npm ci
+      # One universal build runs on both Intel and Apple Silicon Macs.
+      # signingIdentity "-" is an ad-hoc signature: no Apple account, but arm64 builds need at least that to launch
+      - name: Build and sign the update file
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Without this Tauri skips laying out the dmg window (background, icon positions) because CI=true
+          TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
+        run: >
+          npm run tauri build --
+          --target universal-apple-darwin
+          --bundles app,dmg
+          --config '{"bundle":{"createUpdaterArtifacts":true,"macOS":{"signingIdentity":"-"}}}'
+      # Tauri gives the disk the app icon; this puts the dedicated disk icon into the finished dmg
+      - name: Disk icon for the dmg
+        run: bash packaging/macos/set-volume-icon.sh src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg packaging/macos/VolumeIcon.icns
+      - name: Name the files and upload them
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: |
+          v='${{ needs.draft.outputs.version }}'
+          b=src-tauri/target/universal-apple-darwin/release/bundle
+          mkdir -p out sigs
+          cp "$b"/dmg/*.dmg "out/LemiCraft-Launcher-$v-macos-universal.dmg"
+          cp "$b"/macos/*.app.tar.gz "out/LemiCraft-Launcher-$v-macos-universal.app.tar.gz"
+          cp "$b"/macos/*.app.tar.gz.sig "sigs/LemiCraft-Launcher-$v-macos-universal.app.tar.gz.sig"
+          gh release upload "$TAG" out/* --clobber
+      - uses: actions/upload-artifact@v7
+        with:
+          name: sig-macos
+          path: sigs/*.sig
+          if-no-files-found: error
+
+  manifest:
+    name: latest.json
+    # Windows is not needed here, but the draft is only "complete" once every platform has uploaded
+    needs: [draft, linux, windows, macos]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: sig-*
+          path: sigs
+          merge-multiple: true
+      - name: Build latest.json for the updater plugin and upload it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: |
+          v='${{ needs.draft.outputs.version }}'
+          base="https://github.com/${{ github.repository }}/releases/download/$TAG"
+          sig() { cat "sigs/LemiCraft-Launcher-$v-$1.sig"; }
+          jq -n \
+            --arg version "$v" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg lurl "$base/LemiCraft-Launcher-$v-x86_64.AppImage" --arg lsig "$(sig x86_64.AppImage)" \
+            --arg murl "$base/LemiCraft-Launcher-$v-macos-universal.app.tar.gz" --arg msig "$(sig macos-universal.app.tar.gz)" \
+            '{
+              version: $version,
+              notes: "Описание — на странице релиза",
+              pub_date: $date,
+              platforms: {
+                "linux-x86_64":   { url: $lurl, signature: $lsig },
+                "darwin-aarch64": { url: $murl, signature: $msig },
+                "darwin-x86_64":  { url: $murl, signature: $msig }
+              }
+            }' > latest.json
+          cat latest.json
+          gh release upload "$TAG" latest.json --clobber
+      - name: Tell what to do next
+        env:
+          TAG: ${{ needs.draft.outputs.tag }}
+        run: |
+          {
+            echo "### Черновик релиза $TAG готов"
+            echo
+            echo "1. Откройте черновик: https://github.com/${{ github.repository }}/releases"
+            echo "2. Замените \`ЗАПОЛНИТЬ\` в описании на пункты \"Что нового\""
+            echo "3. Проверьте файлы: Windows 2, Linux 4 (\`.flatpak\` приходит из отдельной задачи Flatpak, дождитесь её), macOS 2, latest.json"
+            echo "4. Нажмите **Publish release**"
+          } >> "$GITHUB_STEP_SUMMARY"

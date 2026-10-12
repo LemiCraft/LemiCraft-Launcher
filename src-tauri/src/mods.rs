@@ -281,8 +281,7 @@ fn download_bytes(client: &reqwest::blocking::Client, code: &str) -> Result<Vec<
         return Err("Файл мода подозрительно велик".to_string());
     }
     let bytes = res.bytes().map_err(|err| err.to_string())?;
-    // Content-Length is absent for a chunked response, so the check above alone doesn't bound
-    // that case — this backstops it the same way fetch_skin_data_uri's post-download check does
+    // Content-Length is absent for chunked responses, so this backstops the check above, like fetch_skin_data_uri's
     if bytes.len() as u64 > MAX_DOWNLOAD_BYTES {
         return Err("Файл мода подозрительно велик".to_string());
     }
@@ -356,8 +355,7 @@ pub async fn install_mods(app: AppHandle, ids: Vec<String>) -> Result<(), String
 
         let mut state = load_state();
 
-        // Checked against the full resulting set (existing + newly resolved deps), not just the
-        // clicked id — the frontend only inspects the clicked entry's own `conflicts` list
+        // Checked against the full resulting set (existing + resolved deps); the frontend only inspects the clicked entry's `conflicts`
         let final_set: HashSet<&str> = state.keys().map(String::as_str).chain(resolved.iter().map(String::as_str)).collect();
         for id in &final_set {
             if let Some(entry) = by_id.get(id) {
@@ -380,8 +378,7 @@ pub async fn install_mods(app: AppHandle, ids: Vec<String>) -> Result<(), String
             if !files.is_empty() {
                 let version = by_id.get(id.as_str()).map(|m| m.version.clone()).unwrap_or_default();
                 state.insert(id.clone(), InstalledMod { files, version });
-                // Persisted after every mod, not just once at the end — a later mod failing
-                // in this same batch must not discard the ones that already succeeded
+                // Persisted after every mod, so a later failure in the batch doesn't discard the ones that succeeded
                 save_state(&state)?;
             }
         }
@@ -396,8 +393,7 @@ pub async fn uninstall_mod(id: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
         let mut state = load_state();
 
-        // Not individually tracked — either untouched, or only present as part of the
-        // official pack, which has no per-id file mapping and can't be split apart safely
+        // Not individually tracked: untouched, or only part of the official pack, which has no per-id mapping
         if !state.contains_key(&id) {
             if let Some(pack) = load_official_pack_state() {
                 if pack.minimal_mods.iter().any(|m| m == &id) {
@@ -419,8 +415,7 @@ pub async fn uninstall_mod(id: String) -> Result<(), String> {
             return Err(format!("От этого мода зависят: {}", dependents.join(", ")));
         }
 
-        // Delete the files BEFORE touching `state` — on partial failure the mod must stay
-        // tracked so retry works, rather than being marked gone while its jar still exists
+        // Delete the files BEFORE touching `state`: on partial failure the mod stays tracked, so a retry works
         let entry = state.get(&id).cloned().unwrap_or_default();
         let mods_dir = minecraft_dir().join("mods");
         let mut delete_failed = false;
@@ -518,8 +513,7 @@ fn official_pack_state_path() -> PathBuf {
 fn load_official_pack_state() -> Option<OfficialPackState> {
     let state: OfficialPackState =
         std::fs::read_to_string(official_pack_state_path()).ok().and_then(|json| serde_json::from_str(&json).ok())?;
-    // Mirrors load_state()'s self-healing — if no tracked file is present, stop reporting the
-    // pack as installed (`.any()` on an empty list is false, so an empty list hits this too)
+    // Mirrors load_state()'s self-healing: with no tracked file present (or an empty list) the pack stops counting as installed
     let mods_dir = minecraft_dir().join("mods");
     if !state.files.iter().any(|f| mods_dir.join(f).is_file()) {
         return None;
@@ -541,8 +535,7 @@ pub async fn get_installed_official_pack_version() -> Option<String> {
 #[tauri::command]
 pub async fn uninstall_official_pack() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(|| {
-        // Delete files BEFORE removing the state file — on a partial failure the pack must
-        // stay tracked so a retry (or load_official_pack_state's self-heal) can still see it
+        // Delete files BEFORE removing the state file: on partial failure the pack stays tracked, so a retry still sees it
         if let Some(pack) = load_official_pack_state() {
             let mods_dir = minecraft_dir().join("mods");
             let mut delete_failed = false;
@@ -570,8 +563,7 @@ pub async fn uninstall_official_pack() -> Result<(), String> {
 #[tauri::command]
 pub async fn apply_official_pack(app: AppHandle, download_url: String, version: String, minimal_mods: Vec<String>, file_size: u64) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        // The pack bundles many mods and can take longer than timed_client()'s 20s timeout, so this
-        // retries a few bounded attempts instead of one long wait — same shape as game.rs's install()
+        // The pack can take longer than timed_client()'s 20s, so retry a few bounded attempts, like game.rs's install()
         const PACK_DOWNLOAD_ATTEMPTS: u32 = 3;
         let client = reqwest::blocking::Client::builder()
             .timeout(std::time::Duration::from_secs(60))
@@ -610,8 +602,7 @@ pub async fn apply_official_pack(app: AppHandle, download_url: String, version: 
         let previous = load_official_pack_state();
         let files = extract_mods_zip(&bytes, &mods_dir)?;
 
-        // Files that existed in the previous pack version but aren't in this one must be
-        // removed explicitly — extraction only ever adds/overwrites, it never deletes
+        // Files of the previous pack version missing from this one are removed explicitly; extraction only adds/overwrites
         if let Some(prev) = &previous {
             for f in &prev.files {
                 if !files.contains(f) {
@@ -745,9 +736,8 @@ pub async fn apply_import_bundle(code: String, mod_ids: Vec<String>) -> Result<(
         let bytes = download_bytes(&client, &code)?;
         let minecraft_dir = minecraft_dir();
 
-        // An individually installed copy of a mod the code brings would leave two jars of one id (Fabric refuses
-        // to start), so the old copy goes — after the download, and before extraction so load_state() doesn't
-        // mistake the new jars for individually installed mods
+        // An individually installed copy of a mod the code brings would leave two jars of one id (Fabric refuses to start),
+        // so it goes after the download and before extraction, so load_state() doesn't mistake the new jars for individual mods
         let mut state = load_state();
         let mods_dir = minecraft_dir.join("mods");
         let mut state_changed = false;

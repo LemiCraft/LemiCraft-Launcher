@@ -46,11 +46,44 @@ pub struct UpdateInfo {
     changelog: Vec<String>,
     is_required: bool,
     release_date: Option<String>,
-    // No in-app installer on this platform — the UI just opens download_url in the browser
+    // "installer" (Windows), "in_app" (AppImage / macOS .app via the updater plugin) or "manual" (open download_url)
+    mode: &'static str,
     manual: bool,
 }
 
-fn pick_update(parsed: VersionApiResponse) -> Option<UpdateInfo> {
+// The AppImage is replaced in place, so its folder must be writable
+#[cfg(not(windows))]
+fn dir_writable(dir: &std::path::Path) -> bool {
+    let probe = dir.join(format!(".lemicraft-write-test-{}", std::process::id()));
+    let ok = std::fs::File::create(&probe).is_ok();
+    let _ = std::fs::remove_file(&probe);
+    ok
+}
+
+// An AppImage sets APPIMAGE; a macOS update swaps the whole .app, so it needs a real bundle, not a read-only
+// translocated copy or one running from a mounted disk image
+#[cfg(not(windows))]
+fn in_app_supported() -> bool {
+    if cfg!(target_os = "linux") {
+        return std::env::var_os("APPIMAGE")
+            .map(std::path::PathBuf::from)
+            .and_then(|path| path.parent().map(dir_writable))
+            .unwrap_or(false);
+    }
+    std::env::current_exe()
+        .map(|path| {
+            let path = path.to_string_lossy();
+            path.contains(".app/Contents/MacOS/") && !path.contains("/AppTranslocation/") && !path.starts_with("/Volumes/")
+        })
+        .unwrap_or(false)
+}
+
+#[cfg(windows)]
+fn in_app_supported() -> bool {
+    false
+}
+
+fn pick_update(parsed: VersionApiResponse, current_version: &str) -> Option<UpdateInfo> {
     if cfg!(windows) {
         return Some(UpdateInfo {
             version: parsed.version,
@@ -60,11 +93,16 @@ fn pick_update(parsed: VersionApiResponse) -> Option<UpdateInfo> {
             changelog: parsed.changelog,
             is_required: parsed.is_required,
             release_date: parsed.release_date,
+            mode: "installer",
             manual: false,
         });
     }
     let entry = parsed.platforms?.get(std::env::consts::OS)?.clone();
     let release: PlatformRelease = serde_json::from_value(entry).ok()?;
+    if !is_newer_version(&release.version, current_version) {
+        return None;
+    }
+    let in_app = in_app_supported();
     Some(UpdateInfo {
         version: release.version,
         download_url: release.download_url,
@@ -74,12 +112,12 @@ fn pick_update(parsed: VersionApiResponse) -> Option<UpdateInfo> {
         // There's nothing to force on a platform with no installer, whatever the server says
         is_required: false,
         release_date: release.release_date,
-        manual: true,
+        mode: if in_app { "in_app" } else { "manual" },
+        manual: !in_app,
     })
 }
 
-// Dot-split integer comparison, not semver-aware — matches the old launcher's own check.
-// Only the leading digit run of each part is used, so a suffix like "2.1.0-beta" still compares
+// Dot-split integer comparison like the old launcher's; only each part's leading digits count, so "2.1.0-beta" still compares
 fn is_newer_version(new_version: &str, current_version: &str) -> bool {
     let parse = |v: &str| -> Vec<i64> {
         v.split('.')
@@ -119,7 +157,7 @@ pub async fn check_for_update(current_version: String) -> Result<Option<UpdateIn
         if !parsed.success {
             return Ok(None);
         }
-        Ok(pick_update(parsed).filter(|info| is_newer_version(&info.version, &current_version)))
+        Ok(pick_update(parsed, &current_version).filter(|info| is_newer_version(&info.version, &current_version)))
     })
     .await
     .map_err(|err| err.to_string())?
@@ -182,8 +220,7 @@ pub async fn download_and_install_update(app: AppHandle, download_url: String, s
             const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x01000000;
 
             let script_path = std::env::temp_dir().join("lemicraft_update_helper.bat");
-            // ping as the delay (`timeout` needs a console). Pure ASCII on purpose: cmd reads a .bat in the OEM code
-            // page, which mangles a Cyrillic path, so the installer path is passed as an argument instead
+            // ping as the delay (`timeout` needs a console); pure ASCII since cmd reads .bat in the OEM code page, so the path is an argument
             std::fs::write(&script_path, "@echo off\r\nping 127.0.0.1 -n 3 >nul\r\nstart \"\" /B %1 /S /R\r\n")
                 .map_err(|err| err.to_string())?;
 
@@ -206,6 +243,81 @@ pub async fn download_and_install_update(app: AppHandle, download_url: String, s
     .map_err(|err| err.to_string())?
 }
 
+// The plugin verifies the download against the public key baked into this build (plugins.updater), so the API's sha256 isn't needed
+#[cfg(not(windows))]
+#[tauri::command]
+pub async fn install_update_in_app(app: AppHandle) -> Result<(), String> {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    // A double click must not start two installs writing to the same file
+    static RUNNING: AtomicBool = AtomicBool::new(false);
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return Err("Обновление уже выполняется".to_string());
+    }
+    let result = run_in_app_update(app).await;
+    RUNNING.store(false, Ordering::SeqCst);
+    result
+}
+
+#[cfg(not(windows))]
+async fn run_in_app_update(app: AppHandle) -> Result<(), String> {
+    use tauri_plugin_updater::UpdaterExt;
+
+    let fail = |err: tauri_plugin_updater::Error| {
+        use tauri_plugin_updater::Error;
+        log::warn!("in-app update failed: {err:?}");
+        match &err {
+            Error::Minisign(_) | Error::Base64(_) | Error::SignatureUtf8(_) | Error::SignedVersionMismatch { .. } | Error::MissingSignedVersion => {
+                "Проверка подписи не прошла: файл обновления повреждён или подменён".to_string()
+            }
+            Error::Reqwest(err) if err.is_decode() => {
+                "Сервер обновлений вернул неожиданный ответ — скачайте новую версию вручную".to_string()
+            }
+            Error::Reqwest(_) | Error::Network(_) => {
+                "Не удалось связаться с сервером обновлений. Проверьте интернет или VPN и попробуйте снова".to_string()
+            }
+            Error::ReleaseNotFound | Error::TargetNotFound(_) | Error::TargetsNotFound(_) => {
+                "Для вашей системы автоматическое обновление ещё не опубликовано — скачайте новую версию вручную".to_string()
+            }
+            Error::Io(_) | Error::TempDirNotOnSameMountPoint | Error::FailedToDetermineExtractPath => {
+                "Не удалось заменить файл лаунчера. Проверьте, что папка с ним доступна для записи".to_string()
+            }
+            Error::PreviousAppNotRestored(path) => format!("Обновление не удалось, прежняя версия сохранена здесь: {}", path.display()),
+            _ => format!("Не удалось обновить автоматически: {err}"),
+        }
+    };
+
+    let update = app
+        .updater()
+        .map_err(fail)?
+        .check()
+        .await
+        .map_err(fail)?
+        .ok_or_else(|| "Автоматическое обновление пока недоступно — скачайте новую версию вручную".to_string())?;
+
+    let mut downloaded: u64 = 0;
+    update
+        .download_and_install(
+            |chunk, total| {
+                downloaded += chunk as u64;
+                let percent = total.map_or(-1.0, |total| downloaded as f64 / total as f64 * 100.0);
+                let _ = app.emit("update-progress", serde_json::json!({ "percent": percent, "bytes": downloaded }));
+            },
+            || {},
+        )
+        .await
+        .map_err(fail)?;
+
+    let _ = app.emit("update-progress", serde_json::json!({ "percent": 100, "restarting": true }));
+    app.restart()
+}
+
+#[cfg(windows)]
+#[tauri::command]
+pub async fn install_update_in_app(_app: AppHandle) -> Result<(), String> {
+    Err("На Windows обновление ставится установщиком".to_string())
+}
+
 fn sha256_hex(path: &std::path::Path) -> Result<String, String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
@@ -219,7 +331,6 @@ fn sha256_hex(path: &std::path::Path) -> Result<String, String> {
         }
         hasher.update(&buf[..n]);
     }
-    // Formatted byte-by-byte rather than via `{:x}` on the digest directly — sha2 0.11 switched
-    // its output type (generic-array -> hybrid-array) and the new type doesn't implement LowerHex
+    // Formatted per byte: sha2 0.11's output type doesn't implement LowerHex
     Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
 }

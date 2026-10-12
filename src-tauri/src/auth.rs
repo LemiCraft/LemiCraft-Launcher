@@ -25,6 +25,15 @@ pub(crate) fn net_error(service: &str, err: &reqwest::Error) -> String {
     }
 }
 
+// The provider's error_description is English text meant for developers, not for a player
+pub(crate) fn oauth_error(service: &str, code: Option<&str>, description: Option<&str>) -> String {
+    match code {
+        Some("access_denied") => format!("Вы отказались дать доступ к аккаунту {service}"),
+        Some("temporarily_unavailable" | "server_error") => format!("Сервис {service} временно недоступен, попробуйте позже"),
+        _ => description.or(code).map(str::to_string).unwrap_or_else(|| "Вход не завершён".to_string()),
+    }
+}
+
 fn timed_client() -> reqwest::blocking::Client {
     reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(20))
@@ -279,9 +288,11 @@ fn get_authorization_code(app: &AppHandle) -> Result<String, String> {
                         if let Some(code) = extract_query_param(url, "code") {
                             let _ = tx_nav.send(Ok(code));
                         } else {
-                            let err = extract_query_param(url, "error_description")
-                                .or_else(|| extract_query_param(url, "error"))
-                                .unwrap_or_else(|| "Вход не завершён".to_string());
+                            let err = oauth_error(
+                                "Microsoft",
+                                extract_query_param(url, "error").as_deref(),
+                                extract_query_param(url, "error_description").as_deref(),
+                            );
                             let _ = tx_nav.send(Err(err));
                         }
                         return false;
@@ -575,8 +586,7 @@ fn load_current_account(fetch_skin_url: bool) -> Option<StoredAccount> {
             skin_url
         };
         let refreshed = StoredAccount::Microsoft { uuid, username, access_token, refresh_token, expires_at, skin_url };
-        // A failed persist here is not harmless — the next launch would still hold the old,
-        // by-then-already-consumed refresh_token and be forced into an unexplained re-login
+        // A failed persist isn't harmless: the next launch would hold the already-consumed refresh_token and be forced to log in again
         if let Err(err) = save_account(&refreshed) {
             log::warn!("failed to persist refreshed Microsoft account: {err}");
         }

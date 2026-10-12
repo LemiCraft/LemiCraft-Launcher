@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=LemiCraft Launcher
-Comment=Лаунчер Minecraft-сервера lemicraft.ru
-Exec=LemiCraft-Launcher
+Comment=Официальный лаунчер LemiCraft
+Exec=LemiCraft-Launcher %u
 Icon=ru.lemicraft.Launcher
 Terminal=false
 Type=Application

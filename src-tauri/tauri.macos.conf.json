@@ -1,0 +1,20 @@
+{
+  "bundle": {
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/Icon.icon"
+    ],
+    "macOS": {
+      "dmg": {
+        "background": "../packaging/macos/background.tiff",
+        "windowSize": { "width": 660, "height": 400 },
+        "appPosition": { "x": 165, "y": 190 },
+        "applicationFolderPosition": { "x": 495, "y": 190 }
+      }
+    }
+  }
+}

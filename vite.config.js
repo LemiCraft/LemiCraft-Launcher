@@ -11,5 +11,9 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     strictPort: true,
+    // src-tauri/target holds gigabytes of build output; watching it made the dev server take over a minute to start
+    watch: {
+      ignored: ['**/src-tauri/**'],
+    },
   },
 })

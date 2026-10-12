@@ -23,6 +23,36 @@ mod window_effect;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_deep_link::DeepLinkExt;
 
+// A link that arrives before the page can listen for events waits here; once the page has asked for it, links are emitted live
+#[derive(Default)]
+struct DeepLinkState {
+    page_ready: bool,
+    pending: Option<String>,
+}
+
+#[derive(Default)]
+struct PendingDeepLink(std::sync::Mutex<DeepLinkState>);
+
+#[tauri::command]
+fn take_pending_deep_link(state: tauri::State<PendingDeepLink>) -> Option<String> {
+    let mut guard = state.0.lock().ok()?;
+    guard.page_ready = true;
+    guard.pending.take()
+}
+
+fn deliver_deep_link(app: &tauri::AppHandle, url: String) {
+    let live = match app.state::<PendingDeepLink>().0.lock() {
+        Ok(mut guard) if !guard.page_ready => {
+            guard.pending = Some(url.clone());
+            false
+        }
+        _ => true,
+    };
+    if live {
+        let _ = app.emit("deep-link-url", url);
+    }
+}
+
 // Must build on the main thread; this fn must stay async or it can deadlock on Windows
 #[tauri::command]
 async fn open_logs_window(app: tauri::AppHandle) -> Result<(), String> {
@@ -58,6 +88,7 @@ pub fn run() {
     .manage(game::GameProcess::default())
     .manage(game::GameLogBuffer::default())
     .manage(discord_rpc::DiscordRpc::default())
+    .manage(PendingDeepLink::default())
     .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
       if let Some(window) = app.get_webview_window("main") {
         let _ = window.unminimize();
@@ -86,24 +117,26 @@ pub fn run() {
         )?;
       }
 
-      // macOS registers the scheme at bundle time (Info.plist); Windows/Linux need this at runtime,
-      // including for our portable (non-installed) exe, which has no installer step to do it
+      // macOS registers the scheme in Info.plist at bundle time; Windows/Linux need this at runtime (also for the portable exe)
       #[cfg(any(windows, target_os = "linux"))]
       let _ = app.deep_link().register_all();
 
       let handle = app.handle().clone();
       app.deep_link().on_open_url(move |event| {
         if let Some(url) = event.urls().into_iter().next() {
-          let _ = handle.emit("deep-link-url", url.to_string());
+          deliver_deep_link(&handle, url.to_string());
         }
       });
 
-      // Cold start via URL (app wasn't running yet) — on_open_url alone won't cover this
+      // Cold start via URL (app wasn't running yet): on_open_url alone won't cover this, and an event now would be lost
       if let Ok(Some(urls)) = app.deep_link().get_current() {
         if let Some(url) = urls.into_iter().next() {
-          let _ = app.emit("deep-link-url", url.to_string());
+          deliver_deep_link(app.handle(), url.to_string());
         }
       }
+
+      #[cfg(not(windows))]
+      app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
 
       discord_rpc::start(app.handle().clone());
 
@@ -168,6 +201,7 @@ pub fn run() {
       skin_elyby::upload_elyby_skin,
       update::check_for_update,
       update::download_and_install_update,
+      update::install_update_in_app,
       mods::get_cached_mod_catalog,
       mods::get_mod_catalog,
       mods::get_installed_mods,
@@ -185,6 +219,7 @@ pub fn run() {
       rules::get_cached_rules,
       rules::get_rules,
       violations::get_violations,
+      take_pending_deep_link,
       open_logs_window
     ])
     .run(tauri::generate_context!())

@@ -131,7 +131,6 @@ a:focus-visible {
   color: var(--accent-text-on);
 }
 
-/* scrollbars */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--surface-2) transparent;

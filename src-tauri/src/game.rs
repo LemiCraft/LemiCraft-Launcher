@@ -67,9 +67,8 @@ pub fn stop_game(app: AppHandle, process: tauri::State<GameProcess>) -> Result<(
     result
 }
 
-// Own config (settings, account, ely.by session) always lives here, never the customizable
-// minecraft_dir() below. Debug builds use a separate folder so dev never touches a real install;
-// release must match the old C# launcher's folder for old_launcher_profile_path() (auth.rs) to work.
+// Own config (settings, account, ely.by session) always lives here, never in minecraft_dir(). Debug builds use
+// a separate folder; release must match the old C# launcher's for old_launcher_profile_path() (auth.rs)
 pub(crate) fn game_dir() -> PathBuf {
     let folder = if cfg!(debug_assertions) { "LemiCraftLauncherDev" } else { "LemiCraft" };
     dirs::data_dir().unwrap_or_else(std::env::temp_dir).join(folder)
@@ -179,9 +178,8 @@ fn run(app: &AppHandle, username: String, process: Arc<Mutex<Option<Child>>>) ->
             fabric::LoaderVersion::Name(crate::config::FABRIC_LOADER.to_string()),
         );
 
-        // Skips Mojang's manifest request (no timeout in portablemc: a throttled VPN hangs the launch on it),
-        // but only once both version jsons are on disk — it's also how a missing one gets downloaded,
-        // so excluding it on a fresh install would leave the game uninstallable
+        // Skips Mojang's manifest request (portablemc has no timeout: a throttled VPN hangs the launch), but only once both
+        // version jsons are on disk; it's also how a missing one gets downloaded, so a fresh install needs it
         let versions_dir = minecraft_dir().join("versions");
         let has_version_json = |name: &str| versions_dir.join(name).join(format!("{name}.json")).is_file();
         let fabric_root = format!("fabric-{}-{}", crate::config::MC_VERSION, crate::config::FABRIC_LOADER);

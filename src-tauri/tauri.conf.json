@@ -2,7 +2,6 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "LemiCraft Launcher",
   "mainBinaryName": "LemiCraft-Launcher",
-  "version": "2.1.0",
   "identifier": "ru.lemicraft.launcher",
   "build": {
     "frontendDist": "../dist",
@@ -11,6 +10,13 @@
     "beforeBuildCommand": "npm run build"
   },
   "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJFMTY0MThBQThCQjlFQTkKUldTcG5ydW9pa0VXTG1jcmMrWGY4dzNiSi9vSC95T2o0ZHNJV3czSmNGSUhwWE5MSHNNWVpRYWUK",
+      "endpoints": [
+        "https://lemicraft.ru/api/launcher/updater/{{target}}/{{arch}}/{{current_version}}",
+        "https://github.com/LemiCraft/LemiCraft-Launcher/releases/latest/download/latest.json"
+      ]
+    },
     "deep-link": {
       "desktop": {
         "schemes": ["lemicraft"]

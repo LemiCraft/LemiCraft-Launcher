@@ -1,9 +1,8 @@
 use chacha20poly1305::{aead::Aead, ChaCha20Poly1305, KeyInit};
 use sha2::{Digest, Sha256};
 
-// Encrypts account/session files where DPAPI doesn't exist. The key is derived from machine + user, not stored:
-// no keyring daemon needed (absent in WSL/minimal desktops) and no key file to leak. A copied or backed-up
-// file is useless elsewhere; like DPAPI it doesn't stop other code running as the same user.
+// Encrypts account/session files where DPAPI doesn't exist. The key derives from machine + user (nothing stored, no keyring
+// daemon): a copied file is useless elsewhere, but like DPAPI it doesn't stop other code running as the same user.
 const MAGIC: &[u8; 4] = b"LCE1";
 const NONCE_LEN: usize = 12;
 

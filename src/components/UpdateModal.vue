@@ -1,6 +1,6 @@
 <script setup>
 import { computed } from 'vue';
-import { updateState, startUpdateDownload, dismissUpdate } from '../store/update.js';
+import { updateState, startUpdateDownload, dismissUpdate, openUpdatePage } from '../store/update.js';
 import { formatFileSize } from '../utils/format.js';
 
 const releaseDate = computed(() => {
@@ -17,7 +17,8 @@ const progressText = computed(() => {
   if (updateState.percent == null || updateState.percent < 0) {
     return `Скачивание... ${formatFileSize(updateState.bytes)}`;
   }
-  return updateState.percent >= 100 ? 'Запуск установщика...' : `Скачивание... ${Math.round(updateState.percent)}%`;
+  if (updateState.percent >= 100) return updateState.info?.mode === 'in_app' ? 'Устанавливаю и перезапускаю...' : 'Запуск установщика...';
+  return `Скачивание... ${Math.round(updateState.percent)}%`;
 });
 
 const indeterminate = computed(() => updateState.installing || updateState.percent == null || updateState.percent < 0);
@@ -52,6 +53,7 @@ const indeterminate = computed(() => updateState.installing || updateState.perce
 
         <div class="modal-actions">
           <button v-if="!updateState.info?.is_required" class="cancel-btn" :disabled="updateState.downloading" @click="dismissUpdate">Позже</button>
+          <button v-if="updateState.fallbackOffered" class="cancel-btn" :disabled="updateState.downloading" @click="openUpdatePage">Скачать вручную</button>
           <button class="update-btn" :disabled="updateState.downloading || updateState.installing" @click="startUpdateDownload">
             {{ updateState.downloading ? 'Скачиваю...' : updateState.info?.manual ? 'Открыть страницу загрузки' : 'Обновить сейчас' }}
           </button>

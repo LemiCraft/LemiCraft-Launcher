@@ -221,15 +221,14 @@ fn accept_one_callback(listener: &TcpListener, expected_path: &str, expected_sta
 
                 let params: std::collections::HashMap<_, _> = parsed.query_pairs().into_owned().collect();
 
-                // Ignore a connection whose state doesn't match — otherwise another local
-                // process racing this port could abort a real login before it arrives (DoS)
+                // Ignore a mismatched state: a local process racing this port could otherwise abort a real login (DoS)
                 if params.get("state").map(String::as_str) != Some(expected_state) {
                     let _ = write_response(&mut stream, 404, "Not found");
                     continue;
                 }
 
                 if let Some(err) = params.get("error") {
-                    let message = params.get("error_description").cloned().unwrap_or_else(|| err.clone());
+                    let message = crate::auth::oauth_error("Ely.by", Some(err), params.get("error_description").map(String::as_str));
                     let _ = write_response(&mut stream, 200, &success_page(false));
                     return Err(message);
                 }

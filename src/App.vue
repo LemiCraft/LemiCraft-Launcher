@@ -26,6 +26,7 @@ const windowResolved = ref(!window.__TAURI_INTERNALS__);
 const active = ref('home');
 const isMaximized = ref(false);
 const isClosing = ref(false);
+const windowControls = ref(null);
 
 const DISCORD_PAGE_LABELS = {
   home: 'Читает новости',
@@ -81,9 +82,16 @@ onMounted(async () => {
     </div>
 
     <div v-else class="shell" :class="{ maximized: isMaximized, closing: isClosing }">
-      <AppSidebar :active="active" @navigate="active = $event" />
+      <AppSidebar
+        :active="active"
+        :maximized="isMaximized"
+        @navigate="active = $event"
+        @window-close="windowControls?.close()"
+        @window-minimize="windowControls?.minimize()"
+        @window-maximize="windowControls?.toggleMaximize()"
+      />
       <div class="content-col">
-        <WindowControls guard-mods @update:maximized="isMaximized = $event" @closing="isClosing = true" />
+        <WindowControls ref="windowControls" guard-mods @update:maximized="isMaximized = $event" @closing="isClosing = true" />
         <main class="content">
           <Transition name="view">
             <HomeView v-if="active === 'home'" key="home" @navigate="active = $event" />
@@ -131,22 +139,23 @@ onMounted(async () => {
   box-shadow: none;
 }
 
-:global(.mac) body,
-:global(.mac) #app {
+/* Scoped CSS drops everything after a bare :global(.mac), so these are written as :root.mac / one :global() */
+:global(.mac body),
+:global(.mac #app) {
   background: transparent;
 }
 
-:global(.mac) .shell {
+:root.mac .shell {
   border-radius: 16px;
   background: var(--bg);
 }
 
-:global(.mac) .shell.logs-shell {
+:root.mac .shell.logs-shell {
   border-radius: 14px;
   background: var(--bg);
 }
 
-:global(.mac) .shell.maximized {
+:root.mac .shell.maximized {
   border-radius: 0;
 }
 

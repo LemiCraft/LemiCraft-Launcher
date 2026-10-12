@@ -18,8 +18,7 @@ export const modsState = reactive({
   installedImportModIds: [],
 });
 
-// Set when the Home "no mods installed" banner sends the user here — ModsView briefly
-// pulses the pack install button, then clears this itself once the animation has played
+// Set when the Home "no mods" banner sends the user here; ModsView pulses the pack button once, then clears it
 export function triggerPackHighlight() {
   modsState.highlightPackInstall = true;
 }
@@ -64,14 +63,21 @@ export async function startModsProgressListener() {
 
 let deepLinkListenerStarted = false;
 
+function handleDeepLink(url) {
+  const match = /^lemicraft:\/\/import\/(.+)$/.exec(url ?? '');
+  if (match) modsState.pendingImportCode = decodeURIComponent(match[1]);
+}
+
 export async function startDeepLinkListener() {
   if (deepLinkListenerStarted || !window.__TAURI_INTERNALS__) return;
   deepLinkListenerStarted = true;
   const { listen } = await import('@tauri-apps/api/event');
-  await listen('deep-link-url', (event) => {
-    const match = /^lemicraft:\/\/import\/(.+)$/.exec(event.payload ?? '');
-    if (match) modsState.pendingImportCode = decodeURIComponent(match[1]);
-  });
+  await listen('deep-link-url', (event) => handleDeepLink(event.payload));
+  // A link that launched the app arrived before this listener existed
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    handleDeepLink(await invoke('take_pending_deep_link'));
+  } catch {}
 }
 
 export async function refreshInstalledMods() {
@@ -81,8 +87,7 @@ export async function refreshInstalledMods() {
   modsState.installed = { ...Object.fromEntries(info.pack_ids.map((id) => [id, null])), ...info.individual };
 }
 
-// A mod that's only present via the official pack has no real per-id file ownership —
-// it can't be uninstalled on its own (see uninstall_mod), only alongside the whole pack
+// A mod present only via the official pack has no per-id file ownership: it's removed only with the whole pack (see uninstall_mod)
 export function isPackOnly(id) {
   return modsState.packModIds.includes(id) && !(id in modsState.individualMods);
 }
@@ -191,8 +196,7 @@ export async function previewImportCode(code) {
   return withInvoke((invoke) => invoke('preview_import_code', { code }));
 }
 
-// One download for the whole code instead of an export+download per mod (rate limits); tracked as a unit like the official pack,
-// so mods from an import aren't individually toggleable after
+// One download for the whole code instead of one per mod (rate limits); tracked as a unit like the official pack, so not individually toggleable
 export async function applyImportCode(code, ids) {
   if (modsState.applying || ids.length === 0) return;
   modsState.applying = true;

@@ -44,8 +44,7 @@ impl SkinSession {
     }
 }
 
-// Encrypted the same way auth.rs protects account.sec — this session is just as capable of
-// acting as the user on ely.by, so it deserves the same at-rest protection, not plaintext
+// Encrypted like account.sec: this session can act as the user on ely.by just as well
 fn load_skin_session() -> SkinSession {
     std::fs::read(skin_session_path())
         .ok()
@@ -146,11 +145,15 @@ async fn read_session_cookies(app: &AppHandle) -> Result<SkinSession, String> {
             .get_webview_window("elyby-web")
             .ok_or_else(|| "Окно входа уже закрыто".to_string())
             .and_then(|window| {
-                let mut cookies = window.cookies().unwrap_or_default();
+                let mut cookies = window.cookies_for_url(Url::parse("https://ely.by").unwrap()).unwrap_or_default();
                 if cookies.is_empty() {
-                    if let Ok(c) = window.cookies_for_url(Url::parse("https://ely.by").unwrap()) {
-                        cookies = c;
-                    }
+                    // The per-URL lookup is empty on some platforms; the full jar mixes other logins, so keep only ely.by
+                    cookies = window
+                        .cookies()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|c| c.domain().is_some_and(|d| d.trim_start_matches('.') == "ely.by" || d.ends_with(".ely.by")))
+                        .collect();
                 }
                 Ok(cookies)
             });
@@ -306,8 +309,8 @@ fn fetch_elyby_skins_live(client: &reqwest::blocking::Client, session: &SkinSess
         .text()
         .map_err(|err| err.to_string())?;
 
-    // The page embeds the list as `alight.service.skins = {...json...};` — any failure to find/parse
-    // this must be a real Err, not Ok(empty), or the caller's cache-write would erase the real list
+    // The page embeds the list as `alight.service.skins = {...};` — a find/parse failure must be an Err, not Ok(empty),
+    // or the cache write would erase the real list
     let parse_err = || "Не удалось разобрать страницу ely.by — возможно, сайт временно недоступен или изменил вёрстку".to_string();
     let marker = html.find("alight.service.skins").ok_or_else(parse_err)?;
     let eq_offset = html[marker..].find('=').ok_or_else(parse_err)?;

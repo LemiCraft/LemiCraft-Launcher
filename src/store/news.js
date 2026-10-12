@@ -12,8 +12,7 @@ export const newsState = reactive({
 
 const CACHE_TTL_MS = 2 * 60 * 1000;
 let lastFetchedAt = 0;
-// Bumped by every fetchNews() call so a slower-resolving loadMoreNews() from before a
-// refresh can detect it's stale and discard its result instead of appending onto a reset list
+// Bumped by every fetchNews() so a slower loadMoreNews() from before a refresh can detect it's stale and not append to a reset list
 let requestGeneration = 0;
 
 function relativeDate(iso) {
