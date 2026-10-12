@@ -54,6 +54,8 @@ Workflow [`release.yml`](.github/workflows/release.yml) запускается �
 
 Tauri ставит диску иконку приложения, поэтому значок диска подменяет скрипт `set-volume-icon.sh` уже после сборки. Расстановку значков по окну делает Finder через AppleScript, ради этого в workflow включена переменная `TAURI_BUNDLER_DMG_IGNORE_CI`
 
+Иконку приложения для macOS 26 (папка `src-tauri/icons/Icon.icon`) на сервере компилирует скрипт `compile-icon.sh` и отдаёт Tauri готовый `Assets.car` через `ci-icons.conf.json`: встроенный вызов `actool` в Tauri на сервере падает без объяснений, а тот же вызов из скрипта работает. Локальная сборка на Mac идёт без скрипта, по `tauri.macos.conf.json`
+
 ## Ключ подписи обновлений
 
 Автообновление на Linux (AppImage) и macOS проверяет подпись скачанного файла публичным ключом, который зашит в лаунчер (`plugins.updater.pubkey` в `src-tauri/tauri.conf.json`). Файл с другой подписью не устанавливается. Windows обновляется отдельным путём, по sha256 с сайта, и ключ ему не нужен
