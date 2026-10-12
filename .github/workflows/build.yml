@@ -1,8 +1,14 @@
-# Dry run: builds every platform and keeps the files as workflow artifacts. Publishes nothing and needs no secrets.
+# Dry run: builds the chosen platform (all by default) and keeps the files as workflow artifacts. Publishes nothing and needs no secrets.
 name: Build
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        type: choice
+        options: [all, linux, windows, macos]
+        default: all
 
 permissions:
   contents: read
@@ -27,6 +33,7 @@ jobs:
   linux:
     name: Linux (deb, rpm, AppImage)
     needs: version
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'linux' }}
     # Oldest glibc we ship for: binaries built here also run on older distros such as SteamOS
     runs-on: ubuntu-22.04
     timeout-minutes: 60
@@ -58,6 +65,7 @@ jobs:
   windows:
     name: Windows (installer, portable)
     needs: version
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'windows' }}
     runs-on: windows-latest
     timeout-minutes: 60
     steps:
@@ -84,14 +92,45 @@ jobs:
   macos:
     name: macOS (universal)
     needs: version
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'macos' }}
     runs-on: macos-latest
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
-      - name: Xcode tooling (the Icon Composer .icon needs actool 26+)
+      # actool compiles the Icon Composer .icon (needs Xcode 26+) and Tauri hides its real error, so it is tried here first
+      # Apple's CI reports say it can fail on fresh runners; the retry after "-runFirstLaunch" is the common workaround
+      - name: Trial run of actool for the .icon
+        id: actool
         run: |
+          set +e
           xcodebuild -version
-          xcrun actool --version || true
+          ls -la "$(xcrun --find actool)"
+          tmp="$(mktemp -d)"
+          cp -R src-tauri/icons/Icon.icon "$tmp/Icon.icon"
+          try_actool() {
+            rm -rf "$tmp/out" && mkdir "$tmp/out"
+            actool "$tmp/Icon.icon" --compile "$tmp/out" --output-format human-readable-text --notices --warnings \
+              --output-partial-info-plist "$tmp/out/assetcatalog_generated_info.plist" --app-icon Icon --include-all-app-icons \
+              --accent-color AccentColor --enable-on-demand-resources NO --development-region en \
+              --target-device mac --minimum-deployment-target 26.0 --platform macosx
+            local code=$?
+            [ "$code" = 0 ] && [ -f "$tmp/out/Assets.car" ] && return 0
+            echo "actool exit code: $code"
+            return 1
+          }
+          for attempt in 1 2 3; do
+            echo "::group::actool attempt $attempt"
+            if try_actool; then
+              echo "::endgroup::"
+              echo "ok=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "::endgroup::"
+            [ "$attempt" = 1 ] && sudo xcodebuild -runFirstLaunch
+            sleep 5
+          done
+          echo "::warning::actool failed three times, the dmg is built with the plain icns icon"
+          echo "ok=false" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v7
         with:
           node-version: 22
@@ -106,13 +145,16 @@ jobs:
       - run: npm ci
       # signingIdentity "-" is an ad-hoc signature: no Apple account, but arm64 builds need at least that to launch
       # Without TAURI_BUNDLER_DMG_IGNORE_CI Tauri skips laying out the dmg window (background, icon positions) on CI
-      - env:
+      - name: Build the app and the dmg
+        env:
           TAURI_BUNDLER_DMG_IGNORE_CI: 'true'
-        run: >
-          npm run tauri build --
-          --target universal-apple-darwin
-          --bundles app,dmg
-          --config '{"bundle":{"macOS":{"signingIdentity":"-"}}}'
+        run: |
+          config='{"bundle":{"macOS":{"signingIdentity":"-"}}}'
+          if [ "${{ steps.actool.outputs.ok }}" != "true" ]; then
+            # Arrays are replaced on merge, so the icon list is repeated here without the .icon
+            config='{"bundle":{"icon":["icons/32x32.png","icons/128x128.png","icons/128x128@2x.png","icons/icon.icns","icons/icon.ico"],"macOS":{"signingIdentity":"-"}}}'
+          fi
+          npm run tauri build -- --target universal-apple-darwin --bundles app,dmg --config "$config"
       # Tauri gives the disk the app icon; this puts the dedicated disk icon into the finished dmg
       - name: Disk icon for the dmg
         run: bash packaging/macos/set-volume-icon.sh src-tauri/target/universal-apple-darwin/release/bundle/dmg/*.dmg packaging/macos/VolumeIcon.icns
