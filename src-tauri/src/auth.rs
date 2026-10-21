@@ -736,6 +736,10 @@ fn load_current_account_locked(fetch_skin_url: bool, force: bool) -> Option<Stor
     Some(refreshed)
 }
 
+pub(crate) fn stored_provider() -> Option<&'static str> {
+    load_stored_account().map(|a| a.provider_label())
+}
+
 // Read-only: unlike load_current_account this never refreshes a token (network) or rewrites the account file
 pub(crate) fn stored_username() -> Option<String> {
     load_stored_account().map(|a| a.username().to_string())

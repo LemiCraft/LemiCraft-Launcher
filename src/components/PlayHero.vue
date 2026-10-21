@@ -4,6 +4,8 @@ import { accountStore } from '../store/account.js';
 import { serverStatus, startServerStatusPolling } from '../store/serverStatus.js';
 import { installState, startInstallListeners, launchGame, refreshInstalledState } from '../store/installProgress.js';
 import { modsState } from '../store/mods.js';
+import { startProviderStatusWatcher } from '../store/providerStatus.js';
+import ProviderBanner from './ProviderBanner.vue';
 
 function pingQuality(ms) {
   if (ms == null) return 'unknown';
@@ -14,6 +16,7 @@ function pingQuality(ms) {
 
 onMounted(() => {
   startServerStatusPolling();
+  startProviderStatusWatcher();
   startInstallListeners();
   refreshInstalledState();
 });
@@ -22,6 +25,7 @@ onMounted(() => {
 <template>
   <div class="hero">
     <div class="hero-glow"></div>
+    <ProviderBanner />
 
     <div class="hero-main">
       <span class="eyebrow" :class="{ pending: !serverStatus.loaded }">

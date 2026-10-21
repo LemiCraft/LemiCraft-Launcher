@@ -1,4 +1,6 @@
 pub const API_BASE: &str = "https://lemicraft.ru/api";
+// authlib-injector's own address: the "ely.by" shortcut asks the Ely.by website first, and the game dies at startup when it is down
+pub const ELYBY_AUTHLIB_API: &str = "https://authserver.ely.by/api/authlib-injector";
 pub const WEBSITE_URL: &str = "https://lemicraft.ru";
 
 /// Players connect here, not lemicraft.ru itself — separate box running Velocity, different IP

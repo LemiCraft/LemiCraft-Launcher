@@ -162,6 +162,8 @@ const MAX_INSTALL_ATTEMPTS: u32 = 4;
 fn run(app: &AppHandle, username: String, process: Arc<Mutex<Option<Child>>>) -> Result<(), String> {
     let mut last_error = String::new();
     let settings = crate::settings::load();
+    // never blocks the launch; the banner and the logs say why the game may die
+    crate::provider_status::check_and_publish(app);
 
     for attempt in 1..=MAX_INSTALL_ATTEMPTS {
         if attempt > 1 {
@@ -222,7 +224,7 @@ fn run(app: &AppHandle, username: String, process: Arc<Mutex<Option<Child>>>) ->
                     if provider == "Ely.by" {
                         let _ = app.emit("install-progress", serde_json::json!({ "stage": "authlib" }));
                         let authlib_path = ensure_authlib_injector()?;
-                        game.jvm_args.insert(0, format!("-javaagent:{}=ely.by", authlib_path.to_string_lossy()));
+                        game.jvm_args.insert(0, format!("-javaagent:{}={}", authlib_path.to_string_lossy(), crate::config::ELYBY_AUTHLIB_API));
                     }
                 }
 
@@ -534,6 +536,7 @@ fn spawn_with_log_streaming(
     if let Ok(mut guard) = log_buffer.lock() {
         guard.clear();
     }
+    crate::provider_status::replay_into_log(app);
 
     if let Some(stdout) = child.stdout.take() {
         let app = app.clone();
@@ -590,6 +593,7 @@ fn spawn_with_log_streaming(
                 Ok(Some(status)) => {
                     *guard = None;
                     drop(guard);
+                    log_authlib_problems(&app);
                     let _ = app.emit("game-stopped", ());
                     crate::discord_rpc::set_idle(&app);
                     if !status.success() {
@@ -620,6 +624,29 @@ fn restore_main_window(app: &AppHandle, on_launch: &str) {
         if let Some(window) = app.get_webview_window("main") {
             let _ = window.show();
             let _ = window.set_focus();
+        }
+    }
+}
+
+// a line into the log window for things the game never prints
+pub(crate) fn push_log(app: &AppHandle, line: &str) {
+    push_to_buffer(&app.state::<GameLogBuffer>().0, line);
+    let _ = app.emit("game-log", line.to_string());
+}
+
+// authlib-injector logs to its own file, so a down Ely.by ("Failed to fetch metadata") leaves the game output empty
+fn log_authlib_problems(app: &AppHandle) {
+    if crate::auth::stored_provider() != Some("Ely.by") {
+        return;
+    }
+    let Ok(text) = std::fs::read_to_string(game_dir().join("authlib-injector.log")) else { return };
+    // each run starts with a "Logging file:" line; only the latest counts
+    let latest = text.rfind("Logging file:").map(|at| &text[at..]).unwrap_or(&text);
+    let buffer = app.state::<GameLogBuffer>().0.clone();
+    let already = |line: &str| buffer.lock().map(|guard| guard.iter().any(|seen| seen.contains(line))).unwrap_or(false);
+    for line in latest.lines().filter(|line| line.contains("[ERROR]") || line.contains("[WARNING]")) {
+        if !already(line.trim()) {
+            push_log(app, &format!("[LemiCraft] {line}"));
         }
     }
 }

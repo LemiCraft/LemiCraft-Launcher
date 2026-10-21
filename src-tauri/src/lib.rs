@@ -7,6 +7,7 @@ mod dpapi;
 mod game;
 mod mods;
 mod news;
+mod provider_status;
 mod rules;
 #[cfg(not(windows))]
 mod secret;
@@ -220,6 +221,7 @@ pub fn run() {
       rules::get_cached_rules,
       rules::get_rules,
       violations::get_violations,
+      provider_status::check_provider_status,
       take_pending_deep_link,
       open_logs_window
     ])
