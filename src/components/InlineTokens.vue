@@ -6,6 +6,7 @@ function classesFor(t) {
   return {
     bold: t.bold,
     italic: t.italic,
+    underline: t.underline,
     strike: t.strike,
     code: t.code,
     spoiler: t.spoiler,
@@ -16,6 +17,7 @@ function classesFor(t) {
 <template>
   <template v-for="(t, i) in tokens" :key="i">
     <a v-if="t.kind === 'url'" href="#" class="link" :class="classesFor(t)" @click.prevent="emit('open-link', t.href)">{{ t.text }}</a>
+    <img v-else-if="t.kind === 'emoji'" class="emoji" :src="t.src" :alt="`:${t.name}:`" :title="`:${t.name}:`" />
     <span v-else :class="[t.kind === 'mention' ? 'mention' : null, classesFor(t)]">{{ t.text }}</span>
   </template>
 </template>
@@ -23,6 +25,7 @@ function classesFor(t) {
 <style scoped>
 .bold { font-weight: 700; }
 .italic { font-style: italic; }
+.underline { text-decoration: underline; }
 .strike { text-decoration: line-through; }
 .code {
   font-family: var(--font-mono);
@@ -42,6 +45,11 @@ function classesFor(t) {
 .spoiler:hover {
   color: var(--text);
   background: rgba(255, 255, 255, 0.08);
+}
+.emoji {
+  height: 1.25em;
+  width: auto;
+  vertical-align: -0.25em;
 }
 .link {
   color: #939dff;

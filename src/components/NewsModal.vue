@@ -68,6 +68,7 @@ async function openExternal(target) {
                 {{ t.text }}
               </a>
               <span v-else-if="t.kind === 'mention'" class="mention">{{ t.text }}</span>
+              <img v-else-if="t.kind === 'emoji'" class="emoji" :src="t.src" :alt="`:${t.name}:`" :title="`:${t.name}:`" />
               <template v-else>{{ t.text }}</template>
             </template>
           </h1>
@@ -90,6 +91,7 @@ async function openExternal(target) {
               </component>
               <blockquote v-else-if="block.type === 'quote'" class="md-quote"><InlineTokens :tokens="block.inline" @open-link="openExternal" /></blockquote>
               <pre v-else-if="block.type === 'code'" class="md-code">{{ block.text }}</pre>
+              <p v-else-if="block.type === 'subtext'" class="md-subtext"><InlineTokens :tokens="block.inline" @open-link="openExternal" /></p>
               <p v-else class="md-paragraph">
                 <template v-for="(line, li) in block.lines" :key="li">
                   <InlineTokens :tokens="line" @open-link="openExternal" />
@@ -268,6 +270,18 @@ async function openExternal(target) {
 .title-link svg {
   flex-shrink: 0;
   color: var(--text-faint);
+}
+
+.md-subtext {
+  margin: 0 0 6px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.emoji {
+  height: 1.25em;
+  width: auto;
+  vertical-align: -0.25em;
 }
 
 .mention {

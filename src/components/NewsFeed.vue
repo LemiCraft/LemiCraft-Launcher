@@ -96,6 +96,7 @@ onMounted(() => fetchNews());
                 <template v-for="(t, ti) in excerptTokens(shortDisplayTitle(cardTitle(item.title)), item.mentions)" :key="ti">
                   <span v-if="t.kind === 'mention'" class="mention">{{ t.text }}</span>
                   <span v-else-if="t.kind === 'url'" class="link-text">{{ t.text }}</span>
+                  <img v-else-if="t.kind === 'emoji'" class="emoji" :src="t.src" :alt="`:${t.name}:`" :title="`:${t.name}:`" />
                   <template v-else>{{ t.text }}</template>
                 </template>
               </h3>
@@ -103,6 +104,7 @@ onMounted(() => fetchNews());
                 <template v-for="(t, ti) in excerptTokens(previewText(item.excerpt), item.mentions)" :key="ti">
                   <span v-if="t.kind === 'mention'" class="mention">{{ t.text }}</span>
                   <span v-else-if="t.kind === 'url'" class="link-text">{{ t.text }}</span>
+                  <img v-else-if="t.kind === 'emoji'" class="emoji" :src="t.src" :alt="`:${t.name}:`" :title="`:${t.name}:`" />
                   <template v-else>{{ t.text }}</template>
                 </template>
               </p>
@@ -252,6 +254,12 @@ onMounted(() => fetchNews());
 .card-leave-to {
   opacity: 0;
   transform: scale(0.96);
+}
+
+.emoji {
+  height: 1.25em;
+  width: auto;
+  vertical-align: -0.25em;
 }
 
 .mention {
