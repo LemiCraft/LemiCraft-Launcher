@@ -14,8 +14,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  tests:
+    name: Tests
+    uses: ./.github/workflows/test.yml
+
   draft:
     name: Draft release
+    # A release is only started from code whose tests pass on all three systems
+    needs: tests
     runs-on: ubuntu-22.04
     outputs:
       version: ${{ steps.version.outputs.version }}

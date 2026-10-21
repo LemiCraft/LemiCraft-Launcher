@@ -25,23 +25,24 @@ struct ViolationsResponse {
 
 // Live-only, no disk cache — a stale mute/ban status is actively misleading, unlike news/mods,
 // and caching by username on shared disk would leak one account's record to the next login
+// Background call: auth failures only come back as an error the caller logs, never a window or a logout
 #[tauri::command]
 pub async fn get_violations(username: String) -> Result<Vec<Violation>, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|err| err.to_string())?;
-    let res = client
-        .get(violations_api_url())
-        .query(&[("username", &username)])
-        .send()
-        .await
-        .map_err(|err| err.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(15))
+            .build()
+            .map_err(|err| err.to_string())?;
+        let url = violations_api_url();
+        let res = crate::site_auth::send_authed(&client, || client.get(&url).query(&[("username", &username)]))?;
 
-    if !res.status().is_success() {
-        return Err(format!("Violations API returned {}", res.status()));
-    }
+        if !res.status().is_success() {
+            return Err(format!("Violations API returned {}", res.status()));
+        }
 
-    let parsed: ViolationsResponse = res.json().await.map_err(|err| err.to_string())?;
-    Ok(parsed.violations)
+        let parsed: ViolationsResponse = res.json().map_err(|err| err.to_string())?;
+        Ok(parsed.violations)
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }

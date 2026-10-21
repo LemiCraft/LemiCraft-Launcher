@@ -9,7 +9,8 @@ let queue = Promise.resolve();
 function getViewer() {
   if (viewer) return viewer;
   const canvas = document.createElement('canvas');
-  viewer = new SkinViewer({ canvas, width: 170, height: 240, zoom: 0.65, fov: 35 });
+  // paused: its own frame loop would draw for the whole session
+  viewer = new SkinViewer({ canvas, width: 170, height: 240, zoom: 0.65, fov: 35, renderPaused: true });
   viewer.autoRotate = false;
   viewer.controls.enableZoom = false;
   viewer.controls.enablePan = false;
@@ -59,6 +60,8 @@ export function renderSkinThumbnail(skinUrl, isSlim, force = false) {
       const dataUri = await toDataUri(skinUrl, force);
       const v = getViewer();
       await v.loadSkin(dataUri, { model: isSlim ? 'slim' : 'default' });
+      // the camera only settles in the viewer's frame loop, so it runs just for the capture
+      v.renderPaused = false;
       // Two real frame waits so the camera has ticked before capture, else it grabs a garbage close-up crop
       await nextFrame();
       await nextFrame();
@@ -70,6 +73,8 @@ export function renderSkinThumbnail(skinUrl, isSlim, force = false) {
     } catch (err) {
       console.error('failed to render skin thumbnail:', err);
       return null;
+    } finally {
+      if (viewer) viewer.renderPaused = true;
     }
   });
   queue = promise.then(

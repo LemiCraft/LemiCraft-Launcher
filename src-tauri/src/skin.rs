@@ -190,18 +190,17 @@ struct SuccessResponse {
 
 fn upload_license_skin(file_bytes: Vec<u8>, file_name: String, name: String, model: String, username: &str) -> Result<bool, String> {
     let client = timed_client();
-    let part = reqwest::blocking::multipart::Part::bytes(file_bytes).file_name(file_name);
-    let form = reqwest::blocking::multipart::Form::new()
-        .part("file", part)
-        .text("name", name)
-        .text("model", model)
-        .text("username", username.to_string());
-
-    let res = client
-        .post(format!("{API_BASE}/launcher/skins/upload"))
-        .multipart(form)
-        .send()
-        .map_err(|err| err.to_string())?;
+    let url = format!("{API_BASE}/launcher/skins/upload");
+    // A form can't be reused, so it is built again for a retry after a 401
+    let res = crate::site_auth::send_authed(&client, || {
+        let part = reqwest::blocking::multipart::Part::bytes(file_bytes.clone()).file_name(file_name.clone());
+        let form = reqwest::blocking::multipart::Form::new()
+            .part("file", part)
+            .text("name", name.clone())
+            .text("model", model.clone())
+            .text("username", username.to_string());
+        client.post(&url).multipart(form)
+    })?;
     if !res.status().is_success() {
         return Err(format!("Не удалось загрузить скин ({})", res.status()));
     }
@@ -224,11 +223,8 @@ fn apply_license_skin(
         "provider": provider,
         "accessToken": access_token,
     });
-    let res = client
-        .post(format!("{API_BASE}/launcher/skins/apply"))
-        .json(&body)
-        .send()
-        .map_err(|err| err.to_string())?;
+    let url = format!("{API_BASE}/launcher/skins/apply");
+    let res = crate::site_auth::send_authed(&client, || client.post(&url).json(&body))?;
     if !res.status().is_success() {
         return Err(format!("Не удалось применить скин ({})", res.status()));
     }
@@ -239,11 +235,8 @@ fn apply_license_skin(
 fn delete_license_skin(skin_id: i64, username: &str) -> Result<bool, String> {
     let client = timed_client();
     let body = serde_json::json!({ "skinId": skin_id, "username": username });
-    let res = client
-        .post(format!("{API_BASE}/launcher/skins/delete"))
-        .json(&body)
-        .send()
-        .map_err(|err| err.to_string())?;
+    let url = format!("{API_BASE}/launcher/skins/delete");
+    let res = crate::site_auth::send_authed(&client, || client.post(&url).json(&body))?;
     if !res.status().is_success() {
         return Err(format!("Не удалось удалить скин ({})", res.status()));
     }

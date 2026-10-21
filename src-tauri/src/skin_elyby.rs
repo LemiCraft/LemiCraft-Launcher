@@ -329,7 +329,8 @@ fn sync_elyby_skin_to_db(client: &reqwest::blocking::Client, username: &str, ite
         "skinUrl": item.skin_url,
         "model": model,
     });
-    let _ = client.post(format!("{}/launcher/skins/sync", crate::config::API_BASE)).json(&sync_body).send();
+    let url = format!("{}/launcher/skins/sync", crate::config::API_BASE);
+    let _ = crate::site_auth::send_authed(client, || client.post(&url).json(&sync_body));
 }
 
 #[derive(Deserialize)]

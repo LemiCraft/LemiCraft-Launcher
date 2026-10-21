@@ -105,8 +105,14 @@ fn worker(app: AppHandle) {
     let mut last_sent: Option<Instant> = None;
 
     loop {
-        let tick = if client.is_some() { KEEPALIVE } else { RETRY };
-        let _ = state.wake.wait_timeout_while(lock(&state.desired), tick, |d| !d.dirty);
+        // off: nothing to retry, sleep until something changes
+        if lock(&state.desired).enabled {
+            let tick = if client.is_some() { KEEPALIVE } else { RETRY };
+            let _ = state.wake.wait_timeout_while(lock(&state.desired), tick, |d| !d.dirty);
+        } else {
+            // dropped at once: the guard it returns must not outlive the wait
+            drop(state.wake.wait_while(lock(&state.desired), |d| !d.dirty));
+        }
 
         // Stay clear of Discord's window; cut short only if the feature gets switched off meanwhile
         if let Some(sent) = last_sent {

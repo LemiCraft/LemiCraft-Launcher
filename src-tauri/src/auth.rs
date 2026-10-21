@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc;
+use std::sync::{mpsc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -125,7 +125,14 @@ fn load_old_launcher_account() -> Option<StoredAccount> {
     if old.provider != "Ely.by" || old.access_token.is_empty() {
         return None;
     }
-    Some(StoredAccount::ElyBy { uuid: old.uuid, username: old.username, access_token: old.access_token, skin_url: None })
+    Some(StoredAccount::ElyBy {
+        uuid: old.uuid,
+        username: old.username,
+        access_token: old.access_token,
+        skin_url: None,
+        refresh_token: None,
+        expires_at: None,
+    })
 }
 
 fn load_stored_account() -> Option<StoredAccount> {
@@ -172,6 +179,75 @@ fn validate_elyby_token(access_token: &str) -> Option<bool> {
     }
 }
 
+#[derive(Deserialize)]
+struct ElyRefreshResponse {
+    #[serde(default)]
+    success: bool,
+    #[serde(rename = "accessToken")]
+    access_token: Option<String>,
+    #[serde(rename = "refreshToken")]
+    refresh_token: Option<String>,
+    #[serde(rename = "expiresIn")]
+    expires_in: Option<u64>,
+}
+
+pub(crate) struct ElyTokens {
+    pub access_token: String,
+    pub refresh_token: Option<String>,
+    pub expires_in: Option<u64>,
+}
+
+#[derive(Debug, PartialEq)]
+pub(crate) enum ElyRefreshError {
+    // refresh token refused: log in again
+    Rejected,
+    Unavailable,
+}
+
+pub(crate) fn refresh_elyby_at(base: &str, refresh_token: &str) -> Result<ElyTokens, ElyRefreshError> {
+    let res = timed_client()
+        .post(format!("{base}/auth/ely/refresh"))
+        .json(&serde_json::json!({ "refreshToken": refresh_token }))
+        .send()
+        .map_err(|err| {
+            log::warn!("Ely.by token refresh failed: {}", err.without_url());
+            ElyRefreshError::Unavailable
+        })?;
+    match res.status().as_u16() {
+        200 => {
+            let parsed: ElyRefreshResponse = res.json().map_err(|_| ElyRefreshError::Unavailable)?;
+            match parsed.access_token.filter(|token| parsed.success && !token.is_empty()) {
+                Some(access_token) => Ok(ElyTokens { access_token, refresh_token: parsed.refresh_token, expires_in: parsed.expires_in }),
+                None => Err(ElyRefreshError::Unavailable),
+            }
+        }
+        401 => Err(ElyRefreshError::Rejected),
+        status => {
+            log::warn!("Ely.by token refresh answered {status}");
+            Err(ElyRefreshError::Unavailable)
+        }
+    }
+}
+
+fn renew_elyby(stored: &StoredAccount) -> Option<StoredAccount> {
+    let StoredAccount::ElyBy { uuid, username, skin_url, refresh_token: Some(refresh_token), .. } = stored else {
+        return None;
+    };
+    let tokens = refresh_elyby_at(crate::config::API_BASE, refresh_token).ok()?;
+    let renewed = StoredAccount::ElyBy {
+        uuid: uuid.clone(),
+        username: username.clone(),
+        access_token: tokens.access_token,
+        skin_url: skin_url.clone(),
+        refresh_token: tokens.refresh_token.or_else(|| Some(refresh_token.clone())),
+        expires_at: tokens.expires_in.map(|seconds| now_unix() + seconds),
+    };
+    if let Err(err) = save_account(&renewed) {
+        log::warn!("failed to persist refreshed Ely.by account: {err}");
+    }
+    Some(renewed)
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(tag = "provider")]
 pub(crate) enum StoredAccount {
@@ -190,6 +266,11 @@ pub(crate) enum StoredAccount {
         access_token: String,
         #[serde(default)]
         skin_url: Option<String>,
+        // absent on logins made before the site issued them
+        #[serde(default)]
+        refresh_token: Option<String>,
+        #[serde(default)]
+        expires_at: Option<u64>,
     },
 }
 
@@ -249,7 +330,7 @@ impl From<&StoredAccount> for AccountInfo {
     }
 }
 
-fn now_unix() -> u64 {
+pub(crate) fn now_unix() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
 }
 
@@ -556,30 +637,65 @@ fn run_login(app: &AppHandle, attempt: u64) -> Result<(), String> {
     Ok(())
 }
 
+// refreshes rotate the stored tokens, so they must not overlap
+static ACCOUNT_LOCK: Mutex<()> = Mutex::new(());
+
 // fetch_skin_url gates an extra profile call callers that only need uuid/username/token can skip
 fn load_current_account(fetch_skin_url: bool) -> Option<StoredAccount> {
-    let stored = load_stored_account()?;
+    let _guard = ACCOUNT_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    load_current_account_locked(fetch_skin_url, false)
+}
 
-    let StoredAccount::Microsoft { uuid, username, access_token, refresh_token, expires_at, skin_url } = stored
-    else {
-        if fetch_skin_url {
-            if let StoredAccount::ElyBy { access_token, .. } = &stored {
-                // Checked twice: a single odd 4xx must not wipe a login that still works
-                let rejected = || validate_elyby_token(access_token) == Some(false);
-                if rejected() && {
-                    std::thread::sleep(Duration::from_millis(700));
-                    rejected()
-                } {
-                    let _ = fs::remove_file(account_path());
-                    return None;
+// refresh now even if not expired (after a 401 from the site)
+pub(crate) fn force_refresh_current_session() -> Option<(String, String, String, String)> {
+    let _guard = ACCOUNT_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    load_current_account_locked(false, true)
+        .map(|a| (a.uuid().to_string(), a.username().to_string(), a.access_token().to_string(), a.provider_label().to_string()))
+}
+
+fn load_elyby_account(stored: StoredAccount, fetch_skin_url: bool, force: bool) -> Option<StoredAccount> {
+    let expired = matches!(&stored, StoredAccount::ElyBy { expires_at: Some(at), .. } if now_unix() + 60 >= *at);
+    if force || expired {
+        if let Some(renewed) = renew_elyby(&stored) {
+            return Some(renewed);
+        }
+        if force {
+            return None;
+        }
+    }
+
+    if fetch_skin_url {
+        if let StoredAccount::ElyBy { access_token, .. } = &stored {
+            // Checked twice: a single odd 4xx must not wipe a login that still works
+            let rejected = || validate_elyby_token(access_token) == Some(false);
+            if rejected() && {
+                std::thread::sleep(Duration::from_millis(700));
+                rejected()
+            } {
+                // A refresh token may still save the login
+                if let Some(renewed) = renew_elyby(&stored) {
+                    return Some(renewed);
                 }
+                let _ = fs::remove_file(account_path());
+                return None;
             }
         }
-        return Some(stored);
+    }
+    Some(stored)
+}
+
+fn load_current_account_locked(fetch_skin_url: bool, force: bool) -> Option<StoredAccount> {
+    let stored = load_stored_account()?;
+    if matches!(stored, StoredAccount::ElyBy { .. }) {
+        return load_elyby_account(stored, fetch_skin_url, force);
+    }
+
+    let StoredAccount::Microsoft { uuid, username, access_token, refresh_token, expires_at, skin_url } = stored else {
+        return None;
     };
     let client = timed_client();
 
-    if now_unix() + 60 < expires_at {
+    if !force && now_unix() + 60 < expires_at {
         let skin_url = if fetch_skin_url && skin_url.is_none() {
             minecraft_profile(&client, &access_token).ok().and_then(|p| p.active_skin_url())
         } else {
@@ -642,5 +758,6 @@ pub async fn get_current_account() -> Option<AccountInfo> {
 pub fn logout() -> Result<(), String> {
     fs::remove_file(account_path()).ok();
     fs::remove_file(legacy_account_path()).ok();
+    crate::site_auth::clear();
     Ok(())
 }

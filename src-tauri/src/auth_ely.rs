@@ -32,6 +32,10 @@ struct ElyExchangeResponse {
     success: bool,
     #[serde(rename = "accessToken")]
     access_token: Option<String>,
+    #[serde(rename = "refreshToken")]
+    refresh_token: Option<String>,
+    #[serde(rename = "expiresIn")]
+    expires_in: Option<u64>,
     username: Option<String>,
     uuid: Option<String>,
     error: Option<String>,
@@ -111,6 +115,12 @@ fn run_login(app: &AppHandle, attempt: u64) -> Result<(), String> {
     if !exchange.success {
         return Err(exchange.error.unwrap_or_else(|| "Вход через ely.by не удался".to_string()));
     }
+    // logs the lifetime and whether a refresh token came, never the tokens
+    log::info!(
+        "Ely.by exchange: expiresIn={:?}, refresh token {}",
+        exchange.expires_in,
+        if exchange.refresh_token.is_some() { "present" } else { "absent" }
+    );
     let (access_token, username, uuid) = (
         exchange.access_token.ok_or("Ответ сервера без accessToken")?,
         exchange.username.ok_or("Ответ сервера без username")?,
@@ -128,7 +138,14 @@ fn run_login(app: &AppHandle, attempt: u64) -> Result<(), String> {
     if LOGIN_ATTEMPT.load(Ordering::SeqCst) != attempt {
         return Err("Вход отменён".to_string());
     }
-    let stored = StoredAccount::ElyBy { uuid, username, access_token, skin_url };
+    let stored = StoredAccount::ElyBy {
+        uuid,
+        username,
+        access_token,
+        skin_url,
+        refresh_token: exchange.refresh_token,
+        expires_at: exchange.expires_in.map(|seconds| crate::auth::now_unix() + seconds),
+    };
     save_account(&stored)?;
 
     let _ = app.emit("auth-success", crate::auth::AccountInfo::from(&stored));

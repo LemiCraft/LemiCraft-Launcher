@@ -14,6 +14,7 @@ mod server_list;
 mod server_status;
 mod settings;
 mod shell;
+mod site_auth;
 mod skin;
 mod skin_elyby;
 mod update;
