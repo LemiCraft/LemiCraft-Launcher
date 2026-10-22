@@ -8,6 +8,8 @@ export const accountStore = reactive({
   skinUrl: null,
   provider: null,
   loggedIn: false,
+  // true while the head of a signed-in account is still being fetched
+  skinLoading: false,
 });
 
 // `info` is what the backend reports as the current account (AccountInfo), or null for a guest
@@ -21,6 +23,7 @@ export async function applyAccount(info) {
     accountStore.provider = info.provider;
     accountStore.loggedIn = true;
     if (!sameAccount) accountStore.skinUrl = null;
+    accountStore.skinLoading = !accountStore.skinUrl;
 
     if (info.skin_url) {
       try {
@@ -31,6 +34,7 @@ export async function applyAccount(info) {
         console.error('failed to inline skin as data URI:', err);
         if (revision === accountRevision) accountStore.skinUrl = info.skin_url;
       }
+      if (revision === accountRevision && accountStore.skinUrl) accountStore.skinLoading = false;
     }
 
     // The account profile endpoint can return an empty default texture. Prefer the active skin
@@ -42,10 +46,19 @@ export async function applyAccount(info) {
     accountStore.skinUrl = null;
     accountStore.provider = null;
     accountStore.loggedIn = false;
+    accountStore.skinLoading = false;
   }
 }
 
 async function loadManagedProfileSkin(info, revision) {
+  try {
+    await loadActiveSkin(info, revision);
+  } finally {
+    if (revision === accountRevision) accountStore.skinLoading = false;
+  }
+}
+
+async function loadActiveSkin(info, revision) {
   if (!window.__TAURI_INTERNALS__) return;
   const { invoke } = await import('@tauri-apps/api/core');
   const isElyBy = info.provider === 'Ely.by';

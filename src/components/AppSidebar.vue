@@ -9,7 +9,7 @@ import SkinFace from './SkinFace.vue';
 import MacTrafficLights from './MacTrafficLights.vue';
 import { isMac } from '../utils/platform.js';
 import rulesIcon from '../assets/rules.svg?raw';
-import helpIcon from '../assets/help.svg?raw';
+import wikiIcon from '../assets/wiki.svg?raw';
 import folderIcon from '../assets/folder.svg?raw';
 import gamepadIcon from '../assets/gamepad.svg?raw';
 
@@ -126,8 +126,8 @@ async function openExternal(target) {
 
 const quickLinks = [
   { id: 'rules', title: 'Правила сервера', icon: rulesIcon, action: () => emit('navigate', 'rules') },
-  { id: 'wiki', title: 'Помощь по серверу', icon: helpIcon, action: () => openExternal('https://wiki.lemicraft.ru') },
-  { id: 'folder', title: 'Папка с игрой', icon: folderIcon, action: async () => {
+  { id: 'wiki', title: 'Вики проекта', icon: wikiIcon, action: () => openExternal('https://wiki.lemicraft.ru') },
+  { id: 'folder', title: 'Папка Minecraft', icon: folderIcon, action: async () => {
     if (!window.__TAURI_INTERNALS__) return;
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('open_game_folder');
@@ -202,6 +202,7 @@ const quickLinks = [
               :size="70"
               :radius="10"
             />
+            <div v-else-if="accountStore.skinLoading" class="profile-avatar skeleton"></div>
             <div v-else class="profile-avatar">{{ displayName.charAt(0) }}</div>
           </div>
 
@@ -246,6 +247,7 @@ const quickLinks = [
 
       <button class="account" @click="toggleMenu">
         <SkinFace v-if="accountStore.loggedIn && accountStore.skinUrl" :url="accountStore.skinUrl" :size="32" :radius="9" />
+        <div v-else-if="accountStore.loggedIn && accountStore.skinLoading" class="avatar skeleton"></div>
         <div v-else class="avatar">
           {{ displayName.charAt(0) }}
         </div>
@@ -560,16 +562,24 @@ const quickLinks = [
   flex-shrink: 0;
   margin-top: 2px;
 }
+.skeleton {
+  color: transparent;
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
 .profile-avatar {
-  width: 54px;
-  height: 54px;
+  width: 70px;
+  height: 70px;
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 14px;
+  border-radius: 10px;
   background: var(--surface);
   color: var(--text-muted);
-  font-size: 20px;
+  font-size: 26px;
   font-weight: 700;
 }
 .profile-details {
