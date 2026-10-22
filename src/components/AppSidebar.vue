@@ -8,6 +8,10 @@ import { rulesState } from '../store/rules.js';
 import SkinFace from './SkinFace.vue';
 import MacTrafficLights from './MacTrafficLights.vue';
 import { isMac } from '../utils/platform.js';
+import rulesIcon from '../assets/rules.svg?raw';
+import helpIcon from '../assets/help.svg?raw';
+import folderIcon from '../assets/folder.svg?raw';
+import gamepadIcon from '../assets/gamepad.svg?raw';
 
 function openUpdateModal() {
   updateState.available = true;
@@ -64,6 +68,19 @@ function toggleMenu() {
   menuOpen.value = !menuOpen.value;
 }
 
+function activateQuickLink(link) {
+  link.action();
+  menuOpen.value = false;
+}
+
+function openPersonalAccount() {
+  const target = accountStore.provider === 'Ely.by'
+    ? 'https://account.ely.by/'
+    : 'https://www.minecraft.net/msaprofile';
+  openExternal(target);
+  menuOpen.value = false;
+}
+
 function handleOutsideClick(event) {
   if (menuOpen.value && accountWrapEl.value && !accountWrapEl.value.contains(event.target)) {
     menuOpen.value = false;
@@ -108,14 +125,14 @@ async function openExternal(target) {
 }
 
 const quickLinks = [
-  { id: 'rules', title: 'Правила сервера', icon: 'M6 2h9l5 5v13a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm8 1.5V8h4.5L14 3.5Z', action: () => emit('navigate', 'rules') },
-  { id: 'wiki', title: 'Вики проекта', icon: 'M4 4h16v2H4V4Zm0 5h16v2H4V9Zm0 5h10v2H4v-2Z', action: () => openExternal('https://wiki.lemicraft.ru') },
-  { id: 'folder', title: 'Папка игры', icon: 'M4 5h7l2 2h7v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z', action: async () => {
+  { id: 'rules', title: 'Правила сервера', icon: rulesIcon, action: () => emit('navigate', 'rules') },
+  { id: 'wiki', title: 'Помощь по серверу', icon: helpIcon, action: () => openExternal('https://wiki.lemicraft.ru') },
+  { id: 'folder', title: 'Папка с игрой', icon: folderIcon, action: async () => {
     if (!window.__TAURI_INTERNALS__) return;
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('open_game_folder');
   } },
-  { id: 'logs', title: 'Логи игры', icon: 'M4 4h16v16H4V4Zm2 3v2h12V7H6Zm0 4v2h12v-2H6Zm0 4v2h8v-2H6Z', action: async () => {
+  { id: 'logs', title: 'Логи игры', icon: gamepadIcon, action: async () => {
     if (!window.__TAURI_INTERNALS__) return;
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('open_logs_window');
@@ -170,40 +187,60 @@ const quickLinks = [
     </button>
     </Transition>
 
-    <div class="quick-links">
-      <button
-        v-for="link in quickLinks"
-        :key="link.id"
-        class="quick-link"
-        :class="{ active: link.id === active }"
-        :aria-label="link.title"
-        :aria-current="link.id === active ? 'page' : undefined"
-        @click="link.action"
-      >
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path :d="link.icon" /></svg>
-        <span class="tip">{{ link.title }}</span>
-      </button>
-    </div>
-
     <div class="account-wrap" ref="accountWrapEl">
       <Transition name="menu">
         <div v-if="menuOpen" class="account-menu">
-          <template v-if="accountStore.loggedIn">
-            <div class="menu-info">
-              <span class="menu-name">{{ accountStore.username }}</span>
-              <span class="menu-sub">{{ accountStore.provider }}-аккаунт</span>
+          <div v-if="accountStore.loggedIn" class="profile-head">
+            <div class="profile-details">
+              <span class="profile-name">{{ displayName }}</span>
+              <span class="profile-provider">{{ displayRank }}</span>
             </div>
-            <button class="menu-item danger" @click="handleLogout">Выйти</button>
-          </template>
-          <template v-else>
+            <SkinFace
+              v-if="accountStore.skinUrl"
+              class="profile-skin"
+              :url="accountStore.skinUrl"
+              :size="70"
+              :radius="10"
+            />
+            <div v-else class="profile-avatar">{{ displayName.charAt(0) }}</div>
+          </div>
+
+          <button v-if="accountStore.loggedIn" class="menu-account-link" @click="openPersonalAccount">
+            Личный кабинет
+          </button>
+
+          <div v-else class="guest-login">
+            <div class="guest-heading">
+              <div class="profile-details">
+                <span class="profile-name">Гость</span>
+                <span class="profile-provider">Войдите в аккаунт</span>
+              </div>
+              <div class="profile-avatar">Г</div>
+            </div>
             <button class="menu-item" @click="handleLoginMicrosoft">Войти через Microsoft</button>
             <button class="menu-item" @click="handleLoginElyBy">Войти через Ely.by</button>
-            <div class="menu-register">
-              <span @click="openExternal('https://account.ely.by/register')">Нет аккаунта Ely.by?</span>
-              <span @click="openExternal('https://www.minecraft.net/store/minecraft-java-bedrock-edition-pc')">Купить Minecraft</span>
-            </div>
-            <p v-if="authError" class="menu-error">{{ authError }}</p>
-          </template>
+          </div>
+
+          <div class="quick-links-grid">
+            <button
+              v-for="link in quickLinks"
+              :key="link.id"
+              class="quick-link-card"
+              :class="{ active: link.id === active }"
+              :aria-current="link.id === active ? 'page' : undefined"
+              @click="activateQuickLink(link)"
+            >
+              <span class="quick-link-icon" aria-hidden="true" v-html="link.icon" />
+              <span>{{ link.title }}</span>
+            </button>
+          </div>
+
+          <div v-if="!accountStore.loggedIn" class="menu-register">
+            <span @click="openExternal('https://account.ely.by/register')">Нет аккаунта Ely.by?</span>
+            <span @click="openExternal('https://www.minecraft.net/store/minecraft-java-bedrock-edition-pc')">Купить Minecraft</span>
+          </div>
+          <p v-if="authError" class="menu-error">{{ authError }}</p>
+          <button v-if="accountStore.loggedIn" class="menu-logout" @click="handleLogout">Выйти</button>
         </div>
       </Transition>
 
@@ -227,7 +264,7 @@ const quickLinks = [
 <style scoped>
 .sidebar {
   -webkit-app-region: drag;
-  width: 232px;
+  width: 236px;
   flex-shrink: 0;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
@@ -423,81 +460,9 @@ const quickLinks = [
   background: var(--accent-hover);
 }
 
-.quick-links {
-  display: flex;
-  gap: 6px;
-  padding: 4px 12px 12px;
-}
-
-.quick-link {
-  -webkit-app-region: no-drag;
-  position: relative;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-faint);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
-}
-.quick-link:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-  transform: translateY(-1px);
-}
-/* Only the rules link can be active: the others are actions, not pages */
-.quick-link.active,
-.quick-link.active:hover {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-  color: var(--accent);
-}
-
-.tip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translate(-50%, 4px);
-  white-space: nowrap;
-  background: var(--surface-2);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  padding: 5px 9px;
-  font-size: 11.5px;
-  font-weight: 600;
-  box-shadow: var(--shadow-pop);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease, transform 0.12s ease;
-  z-index: 30;
-}
-.quick-link:hover .tip {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-.quick-link:first-child .tip {
-  left: 0;
-  transform: translate(0, 4px);
-}
-.quick-link:first-child:hover .tip {
-  transform: translate(0, 0);
-}
-.quick-link:last-child .tip {
-  left: auto;
-  right: 0;
-  transform: translate(0, 4px);
-}
-.quick-link:last-child:hover .tip {
-  transform: translate(0, 0);
-}
-
 .account-wrap {
   position: relative;
+  margin-right: -5px;
 }
 
 .account {
@@ -505,9 +470,9 @@ const quickLinks = [
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border-radius: var(--radius-sm);
+  gap: 8px;
+  padding: 8px;
+  border-radius: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
   cursor: pointer;
@@ -541,8 +506,9 @@ const quickLinks = [
 }
 
 .account-name {
-  font-size: 13.5px;
-  font-weight: 600;
+  font-size: 16px;
+  line-height: 1.05;
+  font-weight: 700;
   color: var(--text);
   white-space: nowrap;
   overflow: hidden;
@@ -551,7 +517,8 @@ const quickLinks = [
 }
 
 .account-rank {
-  font-size: 11.5px;
+  font-size: 14px;
+  line-height: 1.05;
   color: var(--gold);
 }
 
@@ -567,38 +534,150 @@ const quickLinks = [
 .account-menu {
   -webkit-app-region: no-drag;
   position: absolute;
-  bottom: calc(100% + 8px);
+  bottom: calc(100% + 10px);
   left: 0;
-  right: 0;
-  background: var(--surface-2);
+  width: 212px;
+  background: #1d1c22;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: 20px;
   box-shadow: var(--shadow-pop);
-  padding: 8px;
+  padding: 20px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 40;
+}
+
+.profile-head,
+.guest-heading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.profile-skin {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.profile-avatar {
+  width: 54px;
+  height: 54px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 20px;
+  font-weight: 700;
+}
+.profile-details {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+.profile-name {
+  max-width: 100%;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.05;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-provider {
+  color: var(--gold);
+  font-size: 14px;
+  line-height: 1.05;
+}
+.menu-account-link {
+  margin-top: 8px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0 8px;
+  border: 1px solid #3a3032;
+  border-radius: 9px;
+  background: #bd0000;
+  color: #fff;
+  font: 700 12px var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.menu-account-link:hover {
+  background: #d00000;
+}
+.guest-login {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  z-index: 20;
 }
-
-.menu-info {
-  padding: 6px 8px 8px;
+.guest-heading {
+  margin-bottom: 6px;
+}
+.quick-links-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 4px;
+}
+.quick-link-card {
+  -webkit-app-region: no-drag;
+  min-width: 0;
+  height: 36px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
   gap: 2px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
-}
-.menu-name {
-  font-size: 13px;
-  font-weight: 600;
+  padding: 2px 4px 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
   color: var(--text);
+  text-align: center;
+  font: 700 10px/1.1 var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
-.menu-sub {
-  font-size: 11px;
-  color: var(--text-faint);
+.quick-link-card:hover {
+  background: var(--surface-hover);
+  border-color: var(--text-faint);
 }
-
+.quick-link-card.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.quick-link-card > span:last-child {
+  flex: 1;
+  min-width: 0;
+}
+.quick-link-card:nth-child(odd) {
+  flex-direction: row-reverse;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.quick-link-icon {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #5b5662;
+}
+.quick-link-icon :deep(svg) {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
 .menu-item {
   text-align: left;
   padding: 8px;
@@ -618,6 +697,24 @@ const quickLinks = [
   color: var(--bad);
 }
 .menu-item.danger:hover {
+  background: var(--bad-soft);
+}
+
+.menu-logout {
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--bad);
+  font: 500 12px var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.menu-logout:hover {
   background: var(--bad-soft);
 }
 
@@ -646,11 +743,12 @@ const quickLinks = [
 
 .menu-enter-active,
 .menu-leave-active {
-  transition: opacity 0.12s ease, transform 0.12s ease;
+  transform-origin: bottom left;
+  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 .menu-enter-from,
 .menu-leave-to {
   opacity: 0;
-  transform: translateY(4px);
+  transform: translateY(8px) scale(0.96);
 }
 </style>
