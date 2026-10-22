@@ -54,7 +54,7 @@ onUnmounted(() => {
       </span>
       <h1>Готов залетать?</h1>
       <p class="sub">
-        LemiCraft<template v-if="serverStatus.loaded && serverStatus.online"> · {{ serverStatus.players }} игроков сейчас в игре</template>
+        LemiCraft<span class="sub-players" :class="{ shown: serverStatus.loaded && serverStatus.online }" :aria-hidden="!(serverStatus.loaded && serverStatus.online)"> · {{ serverStatus.players ?? 0 }} игроков сейчас в игре</span>
       </p>
 
       <button
@@ -99,7 +99,9 @@ onUnmounted(() => {
     </div>
 
     <Transition name="banner">
-      <div :key="currentBanner" class="hero-banner" :style="{ backgroundImage: `url(${bannerImages[currentBanner]})` }" aria-hidden="true"></div>
+      <div :key="currentBanner" class="hero-banner" aria-hidden="true">
+        <div class="hero-banner-img" :style="{ backgroundImage: `url(${bannerImages[currentBanner]})` }"></div>
+      </div>
     </Transition>
   </div>
 </template>
@@ -198,6 +200,14 @@ h1 {
   font-size: 14.5px;
   margin-bottom: 6px;
 }
+/* always in the layout, so the line does not jump when the status arrives */
+.sub-players {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+.sub-players.shown {
+  opacity: 1;
+}
 
 .play-btn {
   display: flex;
@@ -263,6 +273,8 @@ h1 {
   gap: 8px;
   margin-top: 18px;
   flex-wrap: wrap;
+  /* the row keeps its height while loading and when the server is offline */
+  min-height: 28px;
 }
 
 .chip {
@@ -274,9 +286,15 @@ h1 {
   color: rgba(255,255,255,.9);
   background: rgba(0,0,0,.42);
   border: 1px solid rgba(255,255,255,.22);
-  padding: 6px 11px;
-  backdrop-filter: blur(8px);
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 11px;
   border-radius: 999px;
+  animation: chip-in 0.4s ease both;
+}
+@keyframes chip-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 .chip.mono {
   font-family: var(--font-mono);
@@ -303,7 +321,7 @@ h1 {
 
 .chip-skeleton {
   width: 90px;
-  height: 26px;
+  height: 28px;
   border-radius: 999px;
   background: var(--surface-2);
   animation: pulse 1.4s ease-in-out infinite;
@@ -317,8 +335,18 @@ h1 {
   inset: 0;
   z-index: 0;
   pointer-events: none;
+}
+.hero-banner-img {
+  position: absolute;
+  inset: 0;
   background-position: center right;
   background-size: cover;
+  /* a slow drift for as long as the banner stays, then the next one takes over */
+  animation: banner-drift 30s ease-out both;
+}
+@keyframes banner-drift {
+  from { transform: scale(1); }
+  to { transform: scale(1.06) translateX(-1.2%); }
 }
 
 .banner-enter-active,
@@ -336,5 +364,6 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .banner-enter-active,
   .banner-leave-active { transition: none; }
+  .hero-banner-img { animation: none; }
 }
 </style>
