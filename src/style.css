@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap');
+@font-face {
+  font-family: 'Google Sans';
+  src: url('./assets/fonts/GoogleSans-Variable.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
 
 /* Registered so the opaque <-> translucent switch can animate instead of snapping */
 @property --bg { syntax: '<color>'; inherits: true; initial-value: #141317; }
@@ -50,8 +56,8 @@
   --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 30px -12px rgba(0, 0, 0, 0.55);
   --shadow-pop: 0 20px 60px -20px rgba(0, 0, 0, 0.65);
 
-  --font-display: 'Sora', ui-sans-serif, system-ui, sans-serif;
-  --font-body: 'Manrope', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Google Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Google Sans', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 }
 

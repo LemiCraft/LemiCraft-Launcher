@@ -1,9 +1,19 @@
 <script setup>
-import { onMounted } from 'vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 import { accountStore } from '../store/account.js';
 import { serverStatus, startServerStatusPolling } from '../store/serverStatus.js';
 import { installState, startInstallListeners, launchGame, refreshInstalledState } from '../store/installProgress.js';
 import { modsState } from '../store/mods.js';
+
+const bannerImages = Object.entries(import.meta.glob('../assets/banner*.png', { eager: true, query: '?url', import: 'default' }))
+  .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
+  .map(([, imageUrl]) => imageUrl);
+const currentBanner = ref(0);
+let bannerTimer;
+
+function showNextBanner() {
+  currentBanner.value = (currentBanner.value + 1) % bannerImages.length;
+}
 
 function pingQuality(ms) {
   if (ms == null) return 'unknown';
@@ -13,9 +23,14 @@ function pingQuality(ms) {
 }
 
 onMounted(() => {
+  bannerTimer = window.setInterval(showNextBanner, 30_000);
   startServerStatusPolling();
   startInstallListeners();
   refreshInstalledState();
+});
+
+onUnmounted(() => {
+  window.clearInterval(bannerTimer);
 });
 </script>
 
@@ -74,13 +89,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="hero-art" aria-hidden="true">
-      <div class="art-blob blob-1"></div>
-      <div class="art-blob blob-2"></div>
-      <svg class="art-paw" viewBox="0 0 24 24" width="120" height="120" fill="currentColor">
-        <path d="M8.5 9c1 0 1.8-1 1.8-2.5S9.5 4 8.5 4s-1.8 1-1.8 2.5S7.5 9 8.5 9Zm7 0c1 0 1.8-1 1.8-2.5S16.5 4 15.5 4s-1.8 1-1.8 2.5S14.5 9 15.5 9ZM4.8 13c.8 0 1.5-.9 1.5-2s-.7-2-1.5-2-1.5.9-1.5 2 .7 2 1.5 2Zm14.4 0c.8 0 1.5-.9 1.5-2s-.7-2-1.5-2-1.5.9-1.5 2 .7 2 1.5 2ZM12 11c-2.8 0-5.5 1.9-5.5 5 0 2.2 2.3 3.5 5.5 3.5s5.5-1.3 5.5-3.5c0-3.1-2.7-5-5.5-5Z" />
-      </svg>
-    </div>
+    <div :key="currentBanner" class="hero-banner" :style="{ backgroundImage: `url(${bannerImages[currentBanner]})` }" aria-hidden="true"></div>
   </div>
 </template>
 
@@ -88,7 +97,8 @@ onMounted(() => {
 .hero {
   position: relative;
   border-radius: var(--radius-lg);
-  background: linear-gradient(160deg, var(--card) 0%, var(--hero-b) 60%, var(--hero-c) 100%);
+  background: #08090b;
+  isolation: isolate;
   border: 1px solid var(--border);
   padding: 34px 36px;
   display: flex;
@@ -96,6 +106,20 @@ onMounted(() => {
   justify-content: space-between;
   overflow: hidden;
   box-shadow: var(--shadow-card);
+}
+
+.hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.58) 27%, rgba(0,0,0,.28) 72%, rgba(0,0,0,.08) 100%), linear-gradient(0deg, rgba(0,0,0,.24), transparent 55%);
+  pointer-events: none;
+}
+
+@keyframes banner-reveal {
+  from { opacity: 0; transform: scale(1.025); }
+  to { opacity: 1; transform: scale(1); }
 }
 
 .hero-glow {
@@ -106,6 +130,7 @@ onMounted(() => {
   height: 480px;
   background: radial-gradient(circle, rgba(255, 95, 95, 0.22), transparent 65%);
   pointer-events: none;
+  z-index: 0;
 }
 
 .hero-main {
@@ -123,7 +148,7 @@ onMounted(() => {
   gap: 8px;
   font-size: 12.5px;
   font-weight: 600;
-  color: var(--good);
+  color: #9df0b1;
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
@@ -157,12 +182,13 @@ onMounted(() => {
 h1 {
   font-size: 34px;
   font-weight: 800;
-  color: var(--text);
+  color: #fff;
   margin-top: 2px;
+  text-shadow: 0 2px 16px rgba(0,0,0,.55);
 }
 
 .sub {
-  color: var(--text-muted);
+  color: rgba(255,255,255,.82);
   font-size: 14.5px;
   margin-bottom: 6px;
 }
@@ -239,10 +265,11 @@ h1 {
   gap: 6px;
   font-size: 12.5px;
   font-weight: 500;
-  color: var(--text-muted);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  color: rgba(255,255,255,.9);
+  background: rgba(0,0,0,.42);
+  border: 1px solid rgba(255,255,255,.22);
   padding: 6px 11px;
+  backdrop-filter: blur(8px);
   border-radius: 999px;
 }
 .chip.mono {
@@ -279,46 +306,17 @@ h1 {
   width: 64px;
 }
 
-.hero-art {
-  position: relative;
-  z-index: 1;
-  width: 200px;
-  height: 180px;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.art-paw {
-  color: var(--surface-2);
-  opacity: 0.9;
-  transform: rotate(-8deg);
-}
-
-.art-blob {
+.hero-banner {
   position: absolute;
-  border-radius: 50%;
-  filter: blur(2px);
-}
-.blob-1 {
-  width: 140px;
-  height: 140px;
-  background: radial-gradient(circle, rgba(231, 200, 115, 0.16), transparent 70%);
-  top: -10px;
-  right: 10px;
-}
-.blob-2 {
-  width: 90px;
-  height: 90px;
-  background: radial-gradient(circle, rgba(255, 95, 95, 0.18), transparent 70%);
-  bottom: -10px;
-  left: 20px;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  animation: banner-reveal 1.1s cubic-bezier(.2,.75,.25,1) both;
+  background-position: center right;
+  background-size: cover;
 }
 
-@media (max-width: 760px) {
-  .hero-art {
-    display: none;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .hero-banner { animation: none; }
 }
 </style>
