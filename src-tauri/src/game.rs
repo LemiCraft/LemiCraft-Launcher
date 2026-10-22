@@ -799,8 +799,10 @@ mod authlib_tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("authlib-injector.jar");
         std::fs::write(&path, b"old").unwrap();
-        save_jar(&path, &tiny_jar()).unwrap();
-        assert_eq!(std::fs::read(&path).unwrap(), tiny_jar());
+        // built once: the archive carries its creation time, so two builds can differ by a second
+        let jar = tiny_jar();
+        save_jar(&path, &jar).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), jar);
         assert!(!path.with_extension("jar.part").exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
