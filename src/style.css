@@ -58,7 +58,7 @@
 
   --font-display: 'Google Sans', ui-sans-serif, system-ui, sans-serif;
   --font-body: 'Google Sans', ui-sans-serif, system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+  --font-mono: ui-monospace, 'SF Mono', Consolas, monospace;
 }
 
 /* Set while the window backdrop (acrylic/mica) is on: the big backgrounds let it show through */

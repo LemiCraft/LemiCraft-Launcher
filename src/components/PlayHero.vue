@@ -7,14 +7,19 @@ import { modsState } from '../store/mods.js';
 import { startProviderStatusWatcher } from '../store/providerStatus.js';
 import ProviderBanner from './ProviderBanner.vue';
 
-const bannerImages = Object.entries(import.meta.glob('../assets/banner*.png', { eager: true, query: '?url', import: 'default' }))
+const bannerImages = Object.entries(import.meta.glob('../assets/banner*.jpg', { eager: true, query: '?url', import: 'default' }))
   .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
   .map(([, imageUrl]) => imageUrl);
 const currentBanner = ref(0);
 let bannerTimer;
 
+// the next image is decoded first, so the cross-fade never shows an empty card
 function showNextBanner() {
-  currentBanner.value = (currentBanner.value + 1) % bannerImages.length;
+  if (document.hidden || bannerImages.length < 2) return;
+  const next = (currentBanner.value + 1) % bannerImages.length;
+  const img = new Image();
+  img.src = bannerImages[next];
+  img.decode().then(() => { currentBanner.value = next; }).catch(() => {});
 }
 
 function pingQuality(ms) {
@@ -93,7 +98,9 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div :key="currentBanner" class="hero-banner" :style="{ backgroundImage: `url(${bannerImages[currentBanner]})` }" aria-hidden="true"></div>
+    <Transition name="banner">
+      <div :key="currentBanner" class="hero-banner" :style="{ backgroundImage: `url(${bannerImages[currentBanner]})` }" aria-hidden="true"></div>
+    </Transition>
   </div>
 </template>
 
@@ -119,11 +126,6 @@ onUnmounted(() => {
   z-index: 0;
   background: linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.58) 27%, rgba(0,0,0,.28) 72%, rgba(0,0,0,.08) 100%), linear-gradient(0deg, rgba(0,0,0,.24), transparent 55%);
   pointer-events: none;
-}
-
-@keyframes banner-reveal {
-  from { opacity: 0; transform: scale(1.025); }
-  to { opacity: 1; transform: scale(1); }
 }
 
 .hero-glow {
@@ -315,12 +317,24 @@ h1 {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  animation: banner-reveal 1.1s cubic-bezier(.2,.75,.25,1) both;
   background-position: center right;
   background-size: cover;
 }
 
+.banner-enter-active,
+.banner-leave-active {
+  transition: opacity 1.1s ease, transform 1.1s cubic-bezier(.2, .75, .25, 1);
+}
+.banner-enter-from {
+  opacity: 0;
+  transform: scale(1.025);
+}
+.banner-leave-to {
+  opacity: 0;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .hero-banner { animation: none; }
+  .banner-enter-active,
+  .banner-leave-active { transition: none; }
 }
 </style>

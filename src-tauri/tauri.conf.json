@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "LemiCraft",
+  "productName": "LemiCraft Launcher",
   "mainBinaryName": "LemiCraft-Launcher",
   "identifier": "ru.lemicraft.launcher",
   "build": {

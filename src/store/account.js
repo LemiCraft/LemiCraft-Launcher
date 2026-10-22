@@ -14,11 +14,13 @@ export const accountStore = reactive({
 export async function applyAccount(info) {
   const revision = ++accountRevision;
   if (info) {
+    // keep the shown head on a plain refresh, so it does not blink
+    const sameAccount = accountStore.uuid === info.uuid && accountStore.provider === info.provider;
     accountStore.username = info.username;
     accountStore.uuid = info.uuid;
     accountStore.provider = info.provider;
     accountStore.loggedIn = true;
-    accountStore.skinUrl = null;
+    if (!sameAccount) accountStore.skinUrl = null;
 
     if (info.skin_url) {
       try {
