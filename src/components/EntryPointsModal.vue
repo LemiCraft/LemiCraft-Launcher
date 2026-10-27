@@ -19,6 +19,44 @@ function pingText(point) {
   return point.ping_ms == null ? '—' : `${Math.round(point.ping_ms)} мс`;
 }
 
+// lost requests are not visible in the delay, so they are named
+function detailText(point) {
+  if (point.score == null) return 'не отвечает';
+  return point.loss > 0 ? `потери ${Math.round(point.loss * 100)}%` : '';
+}
+
+// all bars share one scale, so the ways can be compared by eye; it starts near the fastest answer
+// instead of zero, otherwise ways that differ by a few tens of ms would look the same
+const rangeScale = computed(() => {
+  const points = entryPoints.probe?.points ?? [];
+  const lows = points.map((p) => p.min_ms ?? p.ping_ms).filter((v) => v != null);
+  const highs = points.map((p) => p.max_ms ?? p.ping_ms).filter((v) => v != null);
+  const lo = lows.length ? Math.floor(Math.min(...lows) * 0.8) : 0;
+  const hi = highs.length ? Math.max(Math.max(...highs) * 1.05, lo + 40) : lo + 40;
+  return { lo, span: hi - lo };
+});
+
+function pct(value) {
+  const { lo, span } = rangeScale.value;
+  return `${Math.min(100, Math.max(0, ((value - lo) / span) * 100))}%`;
+}
+
+function rangeStyle(point) {
+  const min = point.min_ms ?? point.ping_ms;
+  const max = point.max_ms ?? point.ping_ms;
+  if (min == null || max == null) return { opacity: 0 };
+  return { left: pct(min), width: `max(4px, calc(${pct(max)} - ${pct(min)}))` };
+}
+
+function midStyle(point) {
+  return point.ping_ms == null ? { opacity: 0 } : { left: pct(point.ping_ms) };
+}
+
+function rangeTitle(point) {
+  if (point.min_ms == null || point.max_ms == null) return '';
+  return `Быстрее всего ответил за ${Math.round(point.min_ms)} мс, медленнее всего за ${Math.round(point.max_ms)} мс`;
+}
+
 function checkedText(probe) {
   if (!probe) return '';
   const minutes = Math.floor((Date.now() / 1000 - probe.checked_at) / 60);
@@ -73,13 +111,20 @@ const footerText = computed(() => (entryPoints.checking && entryPoints.probe ? '
                       <span v-if="point.id === entryPoints.probe.best" class="tag">лучший</span>
                     </Transition>
                   </span>
-                  <span class="point-host">{{ point.host }}</span>
+                  <span class="point-host">{{ point.host }}<template v-if="detailText(point)"> · {{ detailText(point) }}</template></span>
+                </div>
+                <div class="range" :title="rangeTitle(point)">
+                  <div class="range-track">
+                    <span class="range-fill" :class="entryState(point).level" :style="rangeStyle(point)"></span>
+                    <span class="range-mid" :style="midStyle(point)"></span>
+                  </div>
+                  <span class="range-text">{{ point.min_ms == null ? '' : `${Math.round(point.min_ms)}–${Math.round(point.max_ms)}` }}</span>
                 </div>
                 <Transition name="swap" mode="out-in">
                   <span :key="pingText(point)" class="point-ping">{{ pingText(point) }}</span>
                 </Transition>
                 <Transition name="swap" mode="out-in">
-                  <span :key="entryState(point).text" class="point-state" :class="entryState(point).level">{{ entryState(point).text }}</span>
+                  <span :key="entryState(point).text" class="point-state" :class="entryState(point).level" :title="entryState(point).hint">{{ entryState(point).text }}</span>
                 </Transition>
               </div>
             </template>
@@ -89,11 +134,16 @@ const footerText = computed(() => (entryPoints.checking && entryPoints.probe ? '
                   <span class="bone wide"></span>
                   <span class="bone narrow"></span>
                 </div>
+                <span class="bone range"></span>
                 <span class="bone ping"></span>
                 <span class="bone state"></span>
               </div>
             </template>
           </div>
+
+          <p class="legend">
+            Полоска показывает самый быстрый и самый медленный ответ, чёрточка в ней - средний. «Колебания» значит, что пинг заметно скачет и в игре возможны рывки
+          </p>
 
           <div class="footer">
             <Transition name="swap" mode="out-in">
@@ -121,7 +171,7 @@ const footerText = computed(() => (entryPoints.checking && entryPoints.probe ? '
 .entry-modal {
   position: relative;
   overflow: hidden;
-  width: min(520px, 90vw);
+  width: min(600px, 92vw);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -273,6 +323,58 @@ h2 {
   transform: scale(0.85);
 }
 
+.range {
+  width: 108px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.range-track {
+  position: relative;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+}
+.point.best .range-track {
+  background: var(--surface);
+}
+.range-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: var(--text-faint);
+  transition: left 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), width 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), background 0.3s ease, opacity 0.3s ease;
+}
+.range-fill.good { background: var(--good); }
+.range-fill.warn { background: var(--gold); }
+.range-fill.bad { background: var(--bad); }
+.range-mid {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text);
+  transition: left 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.3s ease;
+}
+.range-text {
+  min-height: 14px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+}
+
+.legend {
+  margin-top: 2px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-faint);
+}
+
 .point-ping {
   min-width: 56px;
   text-align: right;
@@ -301,6 +403,7 @@ h2 {
 .bone.wide { width: 110px; height: 14px; }
 .bone.narrow { width: 140px; height: 10px; margin-top: 4px; }
 .bone.ping { width: 50px; }
+.bone.range { width: 108px; }
 .bone.state { width: 84px; }
 
 .footer {

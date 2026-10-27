@@ -36,10 +36,10 @@ export async function initEntryPoints() {
 }
 
 export function entryState(point) {
-  if (point.score == null) return { text: 'Не отвечает', level: 'bad' };
-  if (point.loss >= 0.2) return { text: 'Нестабильно', level: 'bad' };
-  if (point.loss > 0) return { text: 'Есть сбои', level: 'warn' };
+  if (point.score == null) return { text: 'Не отвечает', level: 'bad', hint: 'Сервер по этому пути не ответил' };
+  if (point.loss >= 0.2) return { text: 'Нестабильно', level: 'bad', hint: 'Много запросов потерялось: подключение может обрываться' };
+  if (point.loss > 0) return { text: 'Есть сбои', level: 'warn', hint: 'Часть запросов потерялась' };
   // a spread that is large for this delay, not just for a long way
-  if ((point.jitter_ms ?? 0) > Math.max(30, (point.ping_ms ?? 0) * 0.3)) return { text: 'Колебания', level: 'warn' };
-  return { text: 'Стабильно', level: 'good' };
+  if ((point.jitter_ms ?? 0) > Math.max(30, (point.ping_ms ?? 0) * 0.3)) return { text: 'Колебания', level: 'warn', hint: 'Пинг заметно скачет: в игре возможны рывки' };
+  return { text: 'Стабильно', level: 'good', hint: 'Пинг ровный, запросы не теряются' };
 }

@@ -30,6 +30,9 @@ const BETTER_BY_MS: f64 = 20.0;
 
 const DIRECT_ID: &str = "direct";
 
+// Raise when the way a delay is measured changes: delays kept from the old way would be mixed with the new ones
+const METRIC_VERSION: u32 = 2;
+
 struct Point {
     id: &'static str,
     label: &'static str,
@@ -53,6 +56,11 @@ pub struct RunSummary {
     pub failed: u32,
     pub median_ms: Option<f64>,
     pub jitter_ms: Option<f64>,
+    /// Fastest and slowest answer of the check
+    #[serde(default)]
+    pub min_ms: Option<f64>,
+    #[serde(default)]
+    pub max_ms: Option<f64>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -61,8 +69,12 @@ pub struct PointResult {
     pub label: String,
     pub host: String,
     pub address: String,
-    /// Delay of the latest check
+    /// Delay of the latest check (the middle one) and its fastest and slowest answer
     pub ping_ms: Option<f64>,
+    #[serde(default)]
+    pub min_ms: Option<f64>,
+    #[serde(default)]
+    pub max_ms: Option<f64>,
     /// Over the last day of checks
     pub jitter_ms: Option<f64>,
     pub loss: f64,
@@ -84,8 +96,19 @@ pub struct Probe {
 
 #[derive(Serialize, Deserialize, Default)]
 struct Store {
+    #[serde(default)]
+    metric: u32,
     runs: HashMap<String, Vec<RunSummary>>,
     last: Option<Probe>,
+}
+
+/// The history, or an empty one when it was kept by another way of measuring
+fn current_or_fresh(store: Store) -> Store {
+    if store.metric == METRIC_VERSION {
+        store
+    } else {
+        Store { metric: METRIC_VERSION, ..Store::default() }
+    }
 }
 
 fn median(values: &[f64]) -> Option<f64> {
@@ -112,6 +135,8 @@ pub fn summarize(at: u64, rtts: &[Option<f64>]) -> RunSummary {
         failed: (rtts.len() - answered.len()) as u32,
         median_ms: median(&answered),
         jitter_ms: spread(&answered),
+        min_ms: answered.iter().copied().reduce(f64::min),
+        max_ms: answered.iter().copied().reduce(f64::max),
     }
 }
 
@@ -306,10 +331,12 @@ fn store_path() -> std::path::PathBuf {
 }
 
 fn load_store() -> Store {
-    std::fs::read_to_string(store_path())
-        .ok()
-        .and_then(|json| serde_json::from_str(&json).ok())
-        .unwrap_or_default()
+    current_or_fresh(
+        std::fs::read_to_string(store_path())
+            .ok()
+            .and_then(|json| serde_json::from_str(&json).ok())
+            .unwrap_or_default(),
+    )
 }
 
 fn save_store(store: &Store) {
@@ -354,6 +381,8 @@ pub async fn probe_entry_points() -> Result<Probe, String> {
                 host: point.host.to_string(),
                 address,
                 ping_ms: latest.median_ms,
+                min_ms: latest.min_ms,
+                max_ms: latest.max_ms,
                 jitter_ms: agg.jitter_ms,
                 loss: agg.loss,
                 score: score(&agg),
@@ -377,7 +406,7 @@ mod tests {
     use std::io::{Read, Write};
 
     fn run(total: u32, failed: u32, median_ms: Option<f64>, jitter_ms: Option<f64>) -> RunSummary {
-        RunSummary { at: 0, total, failed, median_ms, jitter_ms }
+        RunSummary { at: 0, total, failed, median_ms, jitter_ms, min_ms: None, max_ms: None }
     }
 
     fn point(id: &str, score: Option<f64>) -> PointResult {
@@ -387,6 +416,8 @@ mod tests {
             host: id.to_string(),
             address: String::new(),
             ping_ms: None,
+            min_ms: None,
+            max_ms: None,
             jitter_ms: None,
             loss: 0.0,
             score,
@@ -408,6 +439,7 @@ mod tests {
         let s = summarize(5, &[Some(40.0), None, Some(50.0), Some(60.0)]);
         assert_eq!((s.total, s.failed), (4, 1));
         assert_eq!(s.median_ms, Some(50.0));
+        assert_eq!((s.min_ms, s.max_ms), (Some(40.0), Some(60.0)));
         assert!((s.jitter_ms.unwrap() - 20.0 / 3.0).abs() < 1e-9);
         let dead = summarize(5, &[None, None, None]);
         assert_eq!((dead.total, dead.failed, dead.median_ms, dead.jitter_ms), (3, 3, None, None));
@@ -484,6 +516,20 @@ mod tests {
     #[test]
     fn nothing_answering_suggests_nothing() {
         assert_eq!(pick(&[point("direct", None), point("de", None)]), (None, None));
+    }
+
+    #[test]
+    fn history_from_another_way_of_measuring_is_dropped() {
+        let mut old = Store::default();
+        old.runs.insert("de".to_string(), vec![run(6, 0, Some(480.0), Some(5.0))]);
+        old.last = Some(Probe { points: vec![], best: None, suggestion: None, checked_at: 1 });
+        let fresh = current_or_fresh(old);
+        assert!(fresh.runs.is_empty() && fresh.last.is_none());
+        assert_eq!(fresh.metric, METRIC_VERSION);
+
+        let mut current = Store { metric: METRIC_VERSION, ..Store::default() };
+        current.runs.insert("de".to_string(), vec![run(6, 0, Some(120.0), Some(5.0))]);
+        assert_eq!(current_or_fresh(current).runs.len(), 1);
     }
 
     #[test]
