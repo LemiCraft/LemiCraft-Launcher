@@ -4,16 +4,34 @@ import { reactive } from 'vue';
 export const entryPoints = reactive({
   probe: null,
   checking: false,
+  mode: 'quick',
+  // requests answered of the requests planned in the running check
+  progress: { done: 0, total: 0 },
 });
 
 const STALE_AFTER_SECS = 10 * 60;
 
-export async function runEntryProbe() {
+let listening = false;
+
+async function listenProgress() {
+  if (listening) return;
+  listening = true;
+  const { listen } = await import('@tauri-apps/api/event');
+  await listen('entry-probe-progress', (event) => {
+    entryPoints.progress = event.payload;
+  });
+}
+
+// `mode` is 'quick' or 'deep'
+export async function runEntryProbe(mode = 'quick') {
   if (!window.__TAURI_INTERNALS__ || entryPoints.checking) return;
   entryPoints.checking = true;
+  entryPoints.mode = mode;
+  entryPoints.progress = { done: 0, total: 0 };
   try {
+    await listenProgress();
     const { invoke } = await import('@tauri-apps/api/core');
-    entryPoints.probe = await invoke('probe_entry_points');
+    entryPoints.probe = await invoke('probe_entry_points', { mode });
   } catch (err) {
     console.error('entry point check failed:', err);
   } finally {
@@ -36,10 +54,16 @@ export async function initEntryPoints() {
 }
 
 export function entryState(point) {
-  if (point.score == null) return { text: 'Не отвечает', level: 'bad', hint: 'Сервер по этому пути не ответил' };
+  if (point.score == null) return { text: 'Не отвечает', level: 'bad', hint: point.error || 'Сервер по этому пути не ответил' };
   if (point.loss >= 0.2) return { text: 'Нестабильно', level: 'bad', hint: 'Много запросов потерялось: подключение может обрываться' };
   if (point.loss > 0) return { text: 'Есть сбои', level: 'warn', hint: 'Часть запросов потерялась' };
+  const ping = point.ping_ms ?? 0;
   // a spread that is large for this delay, not just for a long way
-  if ((point.jitter_ms ?? 0) > Math.max(30, (point.ping_ms ?? 0) * 0.3)) return { text: 'Колебания', level: 'warn', hint: 'Пинг заметно скачет: в игре возможны рывки' };
+  if ((point.jitter_ms ?? 0) > Math.max(30, ping * 0.3)) {
+    return { text: 'Колебания', level: 'warn', hint: 'Пинг заметно скачет: в игре возможны рывки' };
+  }
+  if (point.tail_ms != null && point.tail_ms - ping > Math.max(80, ping)) {
+    return { text: 'Бывают скачки', level: 'warn', hint: 'Обычно пинг ровный, но изредка подскакивает: возможен одиночный рывок' };
+  }
   return { text: 'Стабильно', level: 'good', hint: 'Пинг ровный, запросы не теряются' };
 }

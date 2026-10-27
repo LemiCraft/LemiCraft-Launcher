@@ -141,6 +141,7 @@ const entrySummary = computed(() => {
   const best = probe.points.find((p) => p.id === probe.best);
   if (!best) return 'Сервер не отвечает ни по одному пути';
   const ms = best.ping_ms == null ? '' : `, ${Math.round(best.ping_ms)} мс`;
+  if (probe.preliminary) return 'Пока мало данных, проверьте ещё раз';
   if (probe.suggestion) return `Лучше всего сейчас: ${best.label}${ms}`;
   if (best.id === 'direct') return `Лучше всего подключаться напрямую${ms}`;
   return 'Прямое подключение подходит, другие не лучше';

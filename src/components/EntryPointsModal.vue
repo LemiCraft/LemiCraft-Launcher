@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, onUnmounted, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { entryPoints, entryState, initEntryPoints, runEntryProbe } from '../store/entryPoints.js';
 
 const open = defineModel({ type: Boolean, default: false });
@@ -10,10 +10,19 @@ function onKeydown(event) {
 onMounted(() => document.addEventListener('keydown', onKeydown));
 onUnmounted(() => document.removeEventListener('keydown', onKeydown));
 
+const now = ref(Date.now());
+let clock = null;
+
 // the check runs when the window is opened, unless the last result is fresh
 watch(open, (value) => {
-  if (value) initEntryPoints();
+  clearInterval(clock);
+  if (value) {
+    now.value = Date.now();
+    clock = setInterval(() => (now.value = Date.now()), 30000);
+    initEntryPoints();
+  }
 });
+onUnmounted(() => clearInterval(clock));
 
 function pingText(point) {
   return point.ping_ms == null ? '—' : `${Math.round(point.ping_ms)} мс`;
@@ -21,7 +30,7 @@ function pingText(point) {
 
 // lost requests are not visible in the delay, so they are named
 function detailText(point) {
-  if (point.score == null) return 'не отвечает';
+  if (point.score == null) return point.error || 'не отвечает';
   return point.loss > 0 ? `потери ${Math.round(point.loss * 100)}%` : '';
 }
 
@@ -59,8 +68,11 @@ function rangeTitle(point) {
 
 function checkedText(probe) {
   if (!probe) return '';
-  const minutes = Math.floor((Date.now() / 1000 - probe.checked_at) / 60);
-  return minutes < 1 ? 'Проверено только что' : `Проверено ${minutes} мин назад`;
+  const minutes = Math.max(0, Math.floor((now.value / 1000 - probe.checked_at) / 60));
+  const when = minutes < 1 ? 'Проверено только что' : `Проверено ${minutes} мин назад`;
+  // how many checks the verdict rests on
+  const runs = Math.max(0, ...probe.points.map((p) => p.runs));
+  return `${when} · проверок в истории: ${runs}`;
 }
 
 const verdict = computed(() => {
@@ -69,24 +81,37 @@ const verdict = computed(() => {
   const best = probe.points.find((p) => p.id === probe.best);
   if (!best) return { text: 'Ни один путь не ответил', level: 'bad' };
   const ms = best.ping_ms == null ? '' : `, ${Math.round(best.ping_ms)} мс`;
+  if (probe.preliminary) return { text: `Пока мало данных, проверьте ещё раз позже. Сейчас быстрее всех: ${best.label}${ms}`, level: 'warn' };
   if (probe.suggestion) return { text: `Рекомендуем: ${best.label}${ms}`, level: 'good' };
   if (best.id === 'direct') return { text: `Лучший путь сейчас: напрямую${ms}`, level: 'good' };
   return { text: `Прямое подключение подходит, разница небольшая. Быстрее всех: ${best.label}${ms}`, level: 'good' };
 });
 
-const footerText = computed(() => (entryPoints.checking && entryPoints.probe ? 'Проверяю...' : checkedText(entryPoints.probe)));
+const footerText = computed(() => {
+  if (!entryPoints.checking) return checkedText(entryPoints.probe);
+  const { done, total } = entryPoints.progress;
+  const what = entryPoints.mode === 'deep' ? 'Подробная проверка' : 'Проверяю';
+  return total ? `${what}: ${Math.min(done, total)} из ${total}` : `${what}...`;
+});
+
+// a bar that fills as the requests of the running check come back
+const progressStyle = computed(() => {
+  const { done, total } = entryPoints.progress;
+  return total ? { '--p': `${Math.min(100, (done / total) * 100)}%` } : {};
+});
+const progressKnown = computed(() => entryPoints.progress.total > 0);
 </script>
 
 <template>
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="open" class="overlay" @click.self="open = false">
-        <div class="entry-modal">
-          <div class="progress" :class="{ on: entryPoints.checking }"></div>
+        <div class="entry-modal" role="dialog" aria-modal="true" aria-labelledby="entry-modal-title">
+          <div class="progress" :class="{ on: entryPoints.checking, known: entryPoints.checking && progressKnown }" :style="progressStyle"></div>
           <button class="close-btn" aria-label="Закрыть" @click="open = false">
             <svg viewBox="0 0 10 10" width="11" height="11"><path d="M0.5 0.5 9.5 9.5M9.5 0.5 0.5 9.5" stroke="currentColor" stroke-width="1.3" /></svg>
           </button>
-          <h2>Подбор подключения</h2>
+          <h2 id="entry-modal-title">Подбор подключения</h2>
           <p class="lead">Как быстро и стабильно отвечает сервер напрямую и через другие страны. Это только подсказка: игра по-прежнему подключается как раньше</p>
 
           <div class="verdict-slot">
@@ -142,14 +167,17 @@ const footerText = computed(() => (entryPoints.checking && entryPoints.probe ? '
           </div>
 
           <p class="legend">
-            Полоска показывает самый быстрый и самый медленный ответ, чёрточка в ней - средний. «Колебания» значит, что пинг заметно скачет и в игре возможны рывки
+            Полоска показывает самый быстрый и самый медленный ответ, чёрточка в ней - средний. «Колебания» значит, что пинг заметно скачет и в игре возможны рывки, «Бывают скачки» - что он подскакивает изредка. Подробная проверка занимает около 30 секунд и точнее
           </p>
 
           <div class="footer">
             <Transition name="swap" mode="out-in">
-              <span :key="footerText" class="checked">{{ footerText }}</span>
+              <span :key="entryPoints.checking ? 'running' : 'idle'" class="checked">{{ footerText }}</span>
             </Transition>
-            <button class="check-btn" :disabled="entryPoints.checking" @click="runEntryProbe">Проверить ещё раз</button>
+            <div class="buttons">
+              <button class="check-btn" :disabled="entryPoints.checking" title="Около 5 секунд" @click="runEntryProbe('quick')">Быстрая проверка</button>
+              <button class="check-btn" :disabled="entryPoints.checking" title="Около 30 секунд, точнее" @click="runEntryProbe('deep')">Подробная</button>
+            </div>
           </div>
         </div>
       </div>
@@ -218,6 +246,12 @@ h2 {
   border-radius: 2px;
   animation: progress-run 1.2s ease-in-out infinite;
 }
+/* once the number of requests is known the line fills instead of running */
+.progress.known::after {
+  width: var(--p, 0%);
+  animation: none;
+  transition: width 0.3s ease;
+}
 @keyframes progress-run {
   from { transform: translateX(-100%); }
   to { transform: translateX(290%); }
@@ -244,6 +278,10 @@ h2 {
 .verdict.good {
   background: var(--good-soft, rgba(80, 200, 120, 0.12));
   color: var(--good);
+}
+.verdict.warn {
+  background: rgba(231, 200, 115, 0.12);
+  color: var(--gold);
 }
 .verdict.bad {
   background: var(--bad-soft);
@@ -417,6 +455,11 @@ h2 {
 .checked {
   font-size: 12.5px;
   color: var(--text-faint);
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
 }
 
 .check-btn {
