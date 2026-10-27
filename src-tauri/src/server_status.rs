@@ -224,7 +224,7 @@ pub(crate) async fn ping_target(connect_host: &str, port: u16, handshake_host: &
     serde_json::from_slice(&resp[pos..end]).map_err(|err| err.to_string())
 }
 
-async fn write_packet(stream: &mut TcpStream, data: &[u8]) -> Result<(), String> {
+pub(crate) async fn write_packet(stream: &mut TcpStream, data: &[u8]) -> Result<(), String> {
     let mut packet = Vec::with_capacity(data.len() + 5);
     write_varint(&mut packet, data.len() as i32);
     packet.extend_from_slice(data);

@@ -6,12 +6,14 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use tokio::time::timeout;
 
-use crate::server_status::{lookup_srv, ping_target};
+use crate::server_status::lookup_srv;
 
 const SAMPLES: usize = 6;
 const SAMPLE_GAP: Duration = Duration::from_millis(300);
 const SAMPLE_TIMEOUT: Duration = Duration::from_millis(2500);
-const SRV_TIMEOUT: Duration = Duration::from_secs(4);
+// a name lookup that gets no answer is tried again: one lost packet must not make a way look dead
+const DNS_TIMEOUT: Duration = Duration::from_secs(2);
+const DNS_ATTEMPTS: usize = 2;
 // a point that fails this many times from the start is written off, so a dead relay does not hold the check up
 const GIVE_UP_AFTER: usize = 3;
 const DEFAULT_PORT: u16 = 25565;
@@ -161,24 +163,117 @@ pub fn pick(points: &[PointResult]) -> (Option<String>, Option<String>) {
     (Some(best.id.clone()), clearly_better.then(|| best.id.clone()))
 }
 
-async fn resolve(point: &Point) -> (String, u16) {
-    match timeout(SRV_TIMEOUT, lookup_srv(point.host)).await {
-        Ok(Ok(target)) => target,
-        _ => (point.fallback.0.to_string(), point.fallback.1),
-    }
+/// Where the time of one request goes. The first two are the network alone; the status reply may also
+/// wait for the server behind the proxy.
+#[derive(Debug, Clone, Copy)]
+pub struct Times {
+    /// Opening the TCP connection: one round trip
+    pub connect_ms: f64,
+    /// Handshake plus status request until the reply is read
+    pub status_ms: f64,
+    /// The ping packet and its echo: what the server list in the game shows. None if the server never echoed
+    pub pong_ms: Option<f64>,
 }
 
-/// Delays of the requests that came back, None for those that did not
-async fn sample(connect_host: &str, port: u16, handshake_host: &str, samples: usize) -> (Vec<Option<f64>>, Option<String>) {
+async fn read_packet(stream: &mut tokio::net::TcpStream) -> Result<Vec<u8>, String> {
+    use tokio::io::AsyncReadExt;
+    let (mut len, mut shift) = (0u32, 0u32);
+    loop {
+        let byte = stream.read_u8().await.map_err(|err| err.to_string())?;
+        len |= u32::from(byte & 0x7F) << shift;
+        shift += 7;
+        if byte & 0x80 == 0 {
+            break;
+        }
+        if shift > 28 {
+            return Err("длина пакета слишком велика".to_string());
+        }
+    }
+    if len > 1 << 20 {
+        return Err("слишком большой пакет".to_string());
+    }
+    let mut body = vec![0u8; len as usize];
+    stream.read_exact(&mut body).await.map_err(|err| err.to_string())?;
+    Ok(body)
+}
+
+/// One status request and one ping to an already resolved address, timed in parts
+async fn measure_once(addr: std::net::SocketAddr, handshake_host: &str) -> Result<Times, String> {
+    use crate::server_status::{write_packet, write_varint};
+
+    let start = Instant::now();
+    let mut stream = tokio::net::TcpStream::connect(addr).await.map_err(|err| err.to_string())?;
+    let connect_ms = start.elapsed().as_secs_f64() * 1000.0;
+    stream.set_nodelay(true).map_err(|err| err.to_string())?;
+
+    let mut handshake = Vec::new();
+    write_varint(&mut handshake, 0x00);
+    write_varint(&mut handshake, 754);
+    write_varint(&mut handshake, handshake_host.len() as i32);
+    handshake.extend_from_slice(handshake_host.as_bytes());
+    handshake.extend_from_slice(&addr.port().to_be_bytes());
+    write_varint(&mut handshake, 1);
+
+    let status_start = Instant::now();
+    write_packet(&mut stream, &handshake).await?;
+    write_packet(&mut stream, &[0x00]).await?;
+    let reply = read_packet(&mut stream).await?;
+    if reply.first() != Some(&0x00) {
+        return Err("неожиданный ответ на запрос статуса".to_string());
+    }
+    let status_ms = status_start.elapsed().as_secs_f64() * 1000.0;
+
+    let mut ping = vec![0x01];
+    ping.extend_from_slice(&0x4c43_i64.to_be_bytes());
+    let ping_start = Instant::now();
+    let pong_ms = match write_packet(&mut stream, &ping).await {
+        Ok(()) => match read_packet(&mut stream).await {
+            Ok(pong) if pong.first() == Some(&0x01) => Some(ping_start.elapsed().as_secs_f64() * 1000.0),
+            _ => None,
+        },
+        Err(_) => None,
+    };
+    Ok(Times { connect_ms, status_ms, pong_ms })
+}
+
+async fn resolve(point: &Point) -> (String, u16) {
+    for _ in 0..DNS_ATTEMPTS {
+        match timeout(DNS_TIMEOUT, lookup_srv(point.host)).await {
+            Ok(Ok(target)) => return target,
+            // answered without an SRV record: nothing more to ask
+            Ok(Err(_)) => break,
+            Err(_) => {}
+        }
+    }
+    (point.fallback.0.to_string(), point.fallback.1)
+}
+
+async fn lookup_address(host: &str, port: u16) -> Option<std::net::SocketAddr> {
+    for _ in 0..DNS_ATTEMPTS {
+        if let Ok(Ok(mut found)) = timeout(DNS_TIMEOUT, tokio::net::lookup_host((host, port))).await {
+            return found.next();
+        }
+    }
+    None
+}
+
+/// Delays of the requests that came back, None for those that did not.
+/// The delay is the ping packet's round trip, which the proxy itself answers: what the server list in
+/// the game shows. The status reply is slower through a relay (it waits for the server behind it), so it
+/// only has to arrive, and the TCP handshake can be answered by a local VPN or proxy.
+async fn sample(addr: std::net::SocketAddr, handshake_host: &str, samples: usize) -> (Vec<Option<f64>>, Option<String>) {
     let mut rtts = Vec::with_capacity(samples);
     let mut last_error = None;
     for i in 0..samples {
         if i > 0 {
             tokio::time::sleep(SAMPLE_GAP).await;
         }
-        let start = Instant::now();
-        match timeout(SAMPLE_TIMEOUT, ping_target(connect_host, port, handshake_host)).await {
-            Ok(Ok(_)) => rtts.push(Some(start.elapsed().as_secs_f64() * 1000.0)),
+        match timeout(SAMPLE_TIMEOUT, measure_once(addr, handshake_host)).await {
+            Ok(Ok(Times { pong_ms: Some(ms), .. })) => rtts.push(Some(ms)),
+            Ok(Ok(_)) => {
+                rtts.push(None);
+                last_error = Some("Нет ответа на ping".to_string());
+            }
             Ok(Err(err)) => {
                 rtts.push(None);
                 last_error = Some(err);
@@ -197,8 +292,13 @@ async fn sample(connect_host: &str, port: u16, handshake_host: &str, samples: us
 
 async fn probe_point(point: &'static Point) -> (String, Vec<Option<f64>>, Option<String>) {
     let (host, port) = resolve(point).await;
-    let (rtts, error) = sample(&host, port, point.host, SAMPLES).await;
-    (format!("{host}:{port}"), rtts, error)
+    let address = format!("{host}:{port}");
+    // the name is looked up once, so its lookup never counts as part of a delay
+    let Some(addr) = lookup_address(&host, port).await else {
+        return (address, vec![None; GIVE_UP_AFTER], Some("Адрес не найден".to_string()));
+    };
+    let (rtts, error) = sample(addr, point.host, SAMPLES).await;
+    (address, rtts, error)
 }
 
 fn store_path() -> std::path::PathBuf {
@@ -418,6 +518,11 @@ mod tests {
                 crate::server_status::write_varint(&mut packet, body.len() as i32);
                 packet.extend(body);
                 let _ = stream.write_all(&packet);
+                // the client pings after the status reply: echo it back like a game server does
+                let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+                if let Ok(n) = stream.read(&mut buf) {
+                    let _ = stream.write_all(&buf[..n]);
+                }
             }
         });
         port
@@ -427,6 +532,10 @@ mod tests {
         block_on(resolve(point))
     }
 
+    fn local(port: u16) -> std::net::SocketAddr {
+        std::net::SocketAddr::from(([127, 0, 0, 1], port))
+    }
+
     fn block_on<F: std::future::Future>(future: F) -> F::Output {
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(future)
     }
@@ -434,7 +543,7 @@ mod tests {
     #[test]
     fn a_real_status_exchange_is_measured_and_a_dropped_one_counts_as_lost() {
         let port = status_server(vec![true, false, true, true]);
-        let (rtts, error) = block_on(sample("127.0.0.1", port, "lemicraft.ru", 4));
+        let (rtts, error) = block_on(sample(local(port), "lemicraft.ru", 4));
         assert_eq!(rtts.len(), 4);
         assert_eq!(rtts.iter().map(Option::is_some).collect::<Vec<_>>(), vec![true, false, true, true]);
         assert!(rtts.iter().flatten().all(|ms| *ms >= 0.0 && *ms < 2500.0));
@@ -444,7 +553,7 @@ mod tests {
     #[test]
     fn a_point_that_never_answers_is_written_off_after_a_few_tries() {
         let port = status_server(vec![false; 6]);
-        let (rtts, error) = block_on(sample("127.0.0.1", port, "lemicraft.ru", 6));
+        let (rtts, error) = block_on(sample(local(port), "lemicraft.ru", 6));
         assert_eq!(rtts, vec![None; GIVE_UP_AFTER]);
         assert!(error.is_some());
     }
@@ -476,11 +585,33 @@ mod tests {
         println!("pick: {:?}", pick(&points));
     }
 
+    // Where the time goes per point; run by hand: cargo test --lib where_the_time_goes -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs network"]
+    fn where_the_time_goes() {
+        block_on(async {
+            for point in POINTS.iter() {
+                let (host, port) = resolve(point).await;
+                let t = Instant::now();
+                let addr = tokio::net::lookup_host((host.as_str(), port)).await.unwrap().next().unwrap();
+                println!("{:<16} {host}:{port} -> {addr} (name lookup {:.0} ms)", point.label, t.elapsed().as_secs_f64() * 1000.0);
+                for _ in 0..5 {
+                    match timeout(Duration::from_secs(4), measure_once(addr, point.host)).await {
+                        Ok(Ok(t)) => println!("    connect {:>5.0}  status {:>5.0}  pong {:>5.0?}", t.connect_ms, t.status_ms, t.pong_ms),
+                        Ok(Err(err)) => println!("    error {err}"),
+                        Err(_) => println!("    timeout"),
+                    }
+                    tokio::time::sleep(Duration::from_millis(300)).await;
+                }
+            }
+        });
+    }
+
     #[test]
     fn a_closed_port_fails_fast() {
         let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port();
         let start = Instant::now();
-        let (rtts, _) = block_on(sample("127.0.0.1", free, "lemicraft.ru", 6));
+        let (rtts, _) = block_on(sample(local(free), "lemicraft.ru", 6));
         assert_eq!(rtts, vec![None; GIVE_UP_AFTER]);
         // a refused connection can take a couple of seconds to be reported on Windows
         assert!(start.elapsed() < (SAMPLE_TIMEOUT + SAMPLE_GAP) * GIVE_UP_AFTER as u32);
