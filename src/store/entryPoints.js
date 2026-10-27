@@ -39,6 +39,7 @@ export function entryState(point) {
   if (point.score == null) return { text: 'Не отвечает', level: 'bad' };
   if (point.loss >= 0.2) return { text: 'Нестабильно', level: 'bad' };
   if (point.loss > 0) return { text: 'Есть сбои', level: 'warn' };
-  if ((point.jitter_ms ?? 0) > 25) return { text: 'Колебания', level: 'warn' };
+  // a spread that is large for this delay, not just for a long way
+  if ((point.jitter_ms ?? 0) > Math.max(30, (point.ping_ms ?? 0) * 0.3)) return { text: 'Колебания', level: 'warn' };
   return { text: 'Стабильно', level: 'good' };
 }
