@@ -15,25 +15,26 @@ const MAX_ATTEMPTS: u32 = 3;
 // Resolved once per process, not on every 120s poll
 static RESOLVED_TARGET: OnceLock<Mutex<Option<(String, u16)>>> = OnceLock::new();
 
-async fn resolve_srv() -> (String, u16) {
-    let lookup = async {
-        let resolver = hickory_resolver::Resolver::builder_tokio()
-            .map_err(|err| err.to_string())?
-            .build()
-            .map_err(|err| err.to_string())?;
-        let response = resolver
-            .srv_lookup(format!("_minecraft._tcp.{}.", crate::config::SERVER_SRV_DOMAIN))
-            .await
-            .map_err(|err| err.to_string())?;
-        for record in response.answers() {
-            if let hickory_resolver::proto::rr::RData::SRV(srv) = &record.data {
-                return Ok((srv.target.to_string().trim_end_matches('.').to_string(), srv.port));
-            }
+/// The host and port the game itself would connect to for a domain, from its SRV record
+pub(crate) async fn lookup_srv(domain: &str) -> Result<(String, u16), String> {
+    let resolver = hickory_resolver::Resolver::builder_tokio()
+        .map_err(|err| err.to_string())?
+        .build()
+        .map_err(|err| err.to_string())?;
+    let response = resolver
+        .srv_lookup(format!("_minecraft._tcp.{domain}."))
+        .await
+        .map_err(|err| err.to_string())?;
+    for record in response.answers() {
+        if let hickory_resolver::proto::rr::RData::SRV(srv) = &record.data {
+            return Ok((srv.target.to_string().trim_end_matches('.').to_string(), srv.port));
         }
-        Err("SRV-запись не найдена".to_string())
-    };
+    }
+    Err("SRV-запись не найдена".to_string())
+}
 
-    match lookup.await {
+async fn resolve_srv() -> (String, u16) {
+    match lookup_srv(crate::config::SERVER_SRV_DOMAIN).await {
         Ok(target) => target,
         Err(_) => (crate::config::SERVER_HOST.to_string(), crate::config::SERVER_PORT),
     }
@@ -168,7 +169,13 @@ fn motd_text(desc: &Value) -> String {
 
 async fn ping() -> Result<Value, String> {
     let (host, port) = resolve_target().await;
-    let mut stream = TcpStream::connect((host.as_str(), port)).await.map_err(|err| err.to_string())?;
+    ping_target(&host, port, &host).await
+}
+
+/// One status request to `connect_host:port`, announcing `handshake_host` like the game does
+pub(crate) async fn ping_target(connect_host: &str, port: u16, handshake_host: &str) -> Result<Value, String> {
+    let host = handshake_host;
+    let mut stream = TcpStream::connect((connect_host, port)).await.map_err(|err| err.to_string())?;
     stream.set_nodelay(true).map_err(|err| err.to_string())?;
 
     let mut handshake = Vec::new();
@@ -224,7 +231,7 @@ async fn write_packet(stream: &mut TcpStream, data: &[u8]) -> Result<(), String>
     stream.write_all(&packet).await.map_err(|err| err.to_string())
 }
 
-fn write_varint(buf: &mut Vec<u8>, value: i32) {
+pub(crate) fn write_varint(buf: &mut Vec<u8>, value: i32) {
     let mut v = value as u32;
     loop {
         if v & !0x7F == 0 {

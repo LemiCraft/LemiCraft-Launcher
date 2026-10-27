@@ -4,6 +4,7 @@ import { pushNotification } from '../store/notifications.js';
 import { showConfirmDialog } from '../store/confirmDialog.js';
 import ArmedResetButton from './ArmedResetButton.vue';
 import { applyTranslucent } from '../store/appearance.js';
+import { entryPoints, entryState, initEntryPoints, runEntryProbe } from '../store/entryPoints.js';
 
 const scrollEl = ref(null);
 const topFaded = ref(false);
@@ -129,6 +130,20 @@ function handleOutsideClick(event) {
   }
 }
 onMounted(() => document.addEventListener('click', handleOutsideClick));
+
+onMounted(initEntryPoints);
+
+const entrySummary = computed(() => {
+  const probe = entryPoints.probe;
+  if (!probe) return 'Задержка и стабильность каждого пути до сервера';
+  const best = probe.points.find((p) => p.id === probe.suggestion);
+  if (best) return `Сейчас лучше всего: ${best.label}. Подключение по умолчанию не меняется`;
+  return probe.best ? 'Текущее подключение подходит' : 'Ни один путь не ответил';
+});
+
+function pingText(point) {
+  return point.ping_ms == null ? '—' : `${Math.round(point.ping_ms)} мс`;
+}
 onUnmounted(() => document.removeEventListener('click', handleOutsideClick));
 
 const settingsLoaded = ref(false);
@@ -335,6 +350,32 @@ onUnmounted(() => {
         <button class="toggle" :class="{ on: translucent }" @click="translucent = !translucent">
           <span class="knob"></span>
         </button>
+      </div>
+    </section>
+
+    <section class="group">
+      <h2>Подключение</h2>
+      <div class="row">
+        <div class="row-text">
+          <span class="row-title">Пути к серверу</span>
+          <span class="row-sub">{{ entrySummary }}</span>
+        </div>
+        <button class="browse-btn" :disabled="entryPoints.checking" @click="runEntryProbe">
+          {{ entryPoints.checking ? 'Проверяю...' : 'Проверить' }}
+        </button>
+      </div>
+      <div v-for="point in entryPoints.probe?.points ?? []" :key="point.id" class="row">
+        <div class="row-text">
+          <span class="row-title">
+            {{ point.label }}
+            <span v-if="point.id === entryPoints.probe.suggestion" class="entry-tag">лучший сейчас</span>
+          </span>
+          <span class="row-sub mono">{{ point.host }}</span>
+        </div>
+        <div class="entry-stats">
+          <span class="entry-ping mono">{{ pingText(point) }}</span>
+          <span class="entry-state" :class="entryState(point).level">{{ entryState(point).text }}</span>
+        </div>
       </div>
     </section>
 
@@ -715,6 +756,37 @@ onUnmounted(() => {
   font-size: 13px;
   color: var(--text-muted);
 }
+
+.entry-tag {
+  margin-left: 8px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+}
+.entry-stats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+.entry-ping {
+  min-width: 56px;
+  text-align: right;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.entry-state {
+  min-width: 92px;
+  text-align: right;
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.entry-state.good { color: var(--good); }
+.entry-state.warn { color: var(--gold); }
+.entry-state.bad { color: var(--bad); }
 
 @media (prefers-reduced-motion: reduce) {
   .group {

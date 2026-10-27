@@ -7,6 +7,7 @@ mod dpapi;
 mod game;
 mod mods;
 mod news;
+mod entry_points;
 mod provider_status;
 mod rules;
 #[cfg(not(windows))]
@@ -174,6 +175,8 @@ pub fn run() {
       auth::logout,
       server_status::get_server_status,
       server_status::get_cached_server_status,
+      entry_points::probe_entry_points,
+      entry_points::get_cached_entry_points,
       settings::get_settings,
       settings::save_settings,
       news::get_news,
