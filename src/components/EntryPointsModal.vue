@@ -53,7 +53,7 @@ function checkedText(probe) {
           </div>
 
           <div class="footer">
-            <span class="checked">{{ entryPoints.checking ? 'Проверяю...' : checkedText(entryPoints.probe) }}</span>
+            <span class="checked">{{ entryPoints.checking && entryPoints.probe ? 'Проверяю...' : checkedText(entryPoints.probe) }}</span>
             <button class="check-btn" :disabled="entryPoints.checking" @click="runEntryProbe">Проверить ещё раз</button>
           </div>
         </div>
