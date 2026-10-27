@@ -137,10 +137,13 @@ const entryModalOpen = ref(false);
 
 const entrySummary = computed(() => {
   const probe = entryPoints.probe;
-  if (!probe) return 'Задержка и стабильность каждого пути до сервера';
-  const best = probe.points.find((p) => p.id === probe.suggestion);
-  if (best) return `Сейчас лучше всего: ${best.label}. Подключение по умолчанию не меняется`;
-  return probe.best ? 'Текущее подключение подходит' : 'Ни один путь не ответил';
+  if (!probe) return 'Сравнит задержку и стабильность подключения: напрямую и через другие страны';
+  const best = probe.points.find((p) => p.id === probe.best);
+  if (!best) return 'Сервер не ответил ни напрямую, ни через другие страны';
+  const ms = best.ping_ms == null ? '' : `, ${Math.round(best.ping_ms)} мс`;
+  if (probe.suggestion) return `Быстрее и стабильнее всего сейчас: ${best.label}${ms}`;
+  if (best.id === 'direct') return `Лучше всего подключаться напрямую${ms}`;
+  return 'Прямое подключение подходит, другие страны заметно не лучше';
 });
 
 onUnmounted(() => document.removeEventListener('click', handleOutsideClick));
@@ -356,10 +359,10 @@ onUnmounted(() => {
       <h2>Подключение</h2>
       <div class="row">
         <div class="row-text">
-          <span class="row-title">Пути к серверу</span>
+          <span class="row-title">Подбор подключения</span>
           <span class="row-sub">{{ entrySummary }}</span>
         </div>
-        <button class="browse-btn" @click="entryModalOpen = true">Открыть</button>
+        <button class="browse-btn" @click="entryModalOpen = true">Подробнее</button>
       </div>
     </section>
 

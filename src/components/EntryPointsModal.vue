@@ -48,8 +48,8 @@ const footerText = computed(() => (entryPoints.checking && entryPoints.probe ? '
           <button class="close-btn" aria-label="Закрыть" @click="open = false">
             <svg viewBox="0 0 10 10" width="11" height="11"><path d="M0.5 0.5 9.5 9.5M9.5 0.5 0.5 9.5" stroke="currentColor" stroke-width="1.3" /></svg>
           </button>
-          <h2>Пути к серверу</h2>
-          <p class="lead">Задержка и стабильность каждого пути. Подключение по умолчанию не меняется, это только подсказка</p>
+          <h2>Подбор подключения</h2>
+          <p class="lead">Как быстро и стабильно отвечает сервер напрямую и через другие страны. Это только подсказка: игра по-прежнему подключается как раньше</p>
 
           <div class="verdict-slot">
             <Transition name="swap" mode="out-in">
