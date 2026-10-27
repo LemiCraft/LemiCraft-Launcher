@@ -137,13 +137,13 @@ const entryModalOpen = ref(false);
 
 const entrySummary = computed(() => {
   const probe = entryPoints.probe;
-  if (!probe) return 'Сравнит задержку и стабильность подключения: напрямую и через другие страны';
+  if (!probe) return 'Сравнит пинг и стабильность разных путей к серверу';
   const best = probe.points.find((p) => p.id === probe.best);
-  if (!best) return 'Сервер не ответил ни напрямую, ни через другие страны';
+  if (!best) return 'Сервер не отвечает ни по одному пути';
   const ms = best.ping_ms == null ? '' : `, ${Math.round(best.ping_ms)} мс`;
-  if (probe.suggestion) return `Быстрее и стабильнее всего сейчас: ${best.label}${ms}`;
+  if (probe.suggestion) return `Лучше всего сейчас: ${best.label}${ms}`;
   if (best.id === 'direct') return `Лучше всего подключаться напрямую${ms}`;
-  return 'Прямое подключение подходит, другие страны заметно не лучше';
+  return 'Прямое подключение подходит, другие не лучше';
 });
 
 onUnmounted(() => document.removeEventListener('click', handleOutsideClick));
