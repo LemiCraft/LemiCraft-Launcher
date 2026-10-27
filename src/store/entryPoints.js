@@ -21,11 +21,16 @@ export async function runEntryProbe() {
   }
 }
 
+// The last result from disk, no network
+export async function loadCachedEntryPoints() {
+  if (!window.__TAURI_INTERNALS__ || entryPoints.probe) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  entryPoints.probe = await invoke('get_cached_entry_points');
+}
+
 // Shows the last result right away, and checks again when it is old
 export async function initEntryPoints() {
-  if (!window.__TAURI_INTERNALS__) return;
-  const { invoke } = await import('@tauri-apps/api/core');
-  if (!entryPoints.probe) entryPoints.probe = await invoke('get_cached_entry_points');
+  await loadCachedEntryPoints();
   const age = Date.now() / 1000 - (entryPoints.probe?.checked_at ?? 0);
   if (age > STALE_AFTER_SECS) runEntryProbe();
 }

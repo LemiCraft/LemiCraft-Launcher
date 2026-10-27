@@ -4,7 +4,8 @@ import { pushNotification } from '../store/notifications.js';
 import { showConfirmDialog } from '../store/confirmDialog.js';
 import ArmedResetButton from './ArmedResetButton.vue';
 import { applyTranslucent } from '../store/appearance.js';
-import { entryPoints, entryState, initEntryPoints, runEntryProbe } from '../store/entryPoints.js';
+import { entryPoints, loadCachedEntryPoints } from '../store/entryPoints.js';
+import EntryPointsModal from './EntryPointsModal.vue';
 
 const scrollEl = ref(null);
 const topFaded = ref(false);
@@ -131,7 +132,8 @@ function handleOutsideClick(event) {
 }
 onMounted(() => document.addEventListener('click', handleOutsideClick));
 
-onMounted(initEntryPoints);
+onMounted(loadCachedEntryPoints);
+const entryModalOpen = ref(false);
 
 const entrySummary = computed(() => {
   const probe = entryPoints.probe;
@@ -141,9 +143,6 @@ const entrySummary = computed(() => {
   return probe.best ? 'Текущее подключение подходит' : 'Ни один путь не ответил';
 });
 
-function pingText(point) {
-  return point.ping_ms == null ? '—' : `${Math.round(point.ping_ms)} мс`;
-}
 onUnmounted(() => document.removeEventListener('click', handleOutsideClick));
 
 const settingsLoaded = ref(false);
@@ -360,22 +359,7 @@ onUnmounted(() => {
           <span class="row-title">Пути к серверу</span>
           <span class="row-sub">{{ entrySummary }}</span>
         </div>
-        <button class="browse-btn" :disabled="entryPoints.checking" @click="runEntryProbe">
-          {{ entryPoints.checking ? 'Проверяю...' : 'Проверить' }}
-        </button>
-      </div>
-      <div v-for="point in entryPoints.probe?.points ?? []" :key="point.id" class="row">
-        <div class="row-text">
-          <span class="row-title">
-            {{ point.label }}
-            <span v-if="point.id === entryPoints.probe.suggestion" class="entry-tag">лучший сейчас</span>
-          </span>
-          <span class="row-sub mono">{{ point.host }}</span>
-        </div>
-        <div class="entry-stats">
-          <span class="entry-ping mono">{{ pingText(point) }}</span>
-          <span class="entry-state" :class="entryState(point).level">{{ entryState(point).text }}</span>
-        </div>
+        <button class="browse-btn" @click="entryModalOpen = true">Открыть</button>
       </div>
     </section>
 
@@ -396,6 +380,7 @@ onUnmounted(() => {
     </div>
 
     </div>
+    <EntryPointsModal v-model="entryModalOpen" />
   </div>
 </template>
 
@@ -757,36 +742,6 @@ onUnmounted(() => {
   color: var(--text-muted);
 }
 
-.entry-tag {
-  margin-left: 8px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 11px;
-  font-weight: 600;
-}
-.entry-stats {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-shrink: 0;
-}
-.entry-ping {
-  min-width: 56px;
-  text-align: right;
-  font-size: 13px;
-  color: var(--text-muted);
-}
-.entry-state {
-  min-width: 92px;
-  text-align: right;
-  font-size: 12.5px;
-  font-weight: 600;
-}
-.entry-state.good { color: var(--good); }
-.entry-state.warn { color: var(--gold); }
-.entry-state.bad { color: var(--bad); }
 
 @media (prefers-reduced-motion: reduce) {
   .group {
