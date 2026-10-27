@@ -4,8 +4,23 @@ import { entryPoints, entryState, initEntryPoints, runEntryProbe } from '../stor
 
 const open = defineModel({ type: Boolean, default: false });
 
+const shaking = ref(false);
+let shakeTimer = null;
+
+// A running check is not closed by a stray click outside or by Escape: the window only shakes. The cross
+// still closes it; the check goes on in the background and the result is there when the window is opened again.
+function close(deliberate = false) {
+  if (entryPoints.checking && !deliberate) {
+    shaking.value = true;
+    clearTimeout(shakeTimer);
+    shakeTimer = setTimeout(() => (shaking.value = false), 450);
+    return;
+  }
+  open.value = false;
+}
+
 function onKeydown(event) {
-  if (event.key === 'Escape' && open.value) open.value = false;
+  if (event.key === 'Escape' && open.value) close();
 }
 onMounted(() => document.addEventListener('keydown', onKeydown));
 onUnmounted(() => document.removeEventListener('keydown', onKeydown));
@@ -22,7 +37,10 @@ watch(open, (value) => {
     initEntryPoints();
   }
 });
-onUnmounted(() => clearInterval(clock));
+onUnmounted(() => {
+  clearInterval(clock);
+  clearTimeout(shakeTimer);
+});
 
 function pingText(point) {
   return point.ping_ms == null ? '—' : `${Math.round(point.ping_ms)} мс`;
@@ -105,10 +123,10 @@ const progressKnown = computed(() => entryPoints.progress.total > 0);
 <template>
   <Teleport to="body">
     <Transition name="modal">
-      <div v-if="open" class="overlay" @click.self="open = false">
-        <div class="entry-modal" role="dialog" aria-modal="true" aria-labelledby="entry-modal-title">
+      <div v-if="open" class="overlay" @click.self="close()">
+        <div class="entry-modal" :class="{ shaking }" role="dialog" aria-modal="true" aria-labelledby="entry-modal-title">
           <div class="progress" :class="{ on: entryPoints.checking, known: entryPoints.checking && progressKnown }" :style="progressStyle"></div>
-          <button class="close-btn" aria-label="Закрыть" @click="open = false">
+          <button class="close-btn" aria-label="Закрыть" @click="close(true)">
             <svg viewBox="0 0 10 10" width="11" height="11"><path d="M0.5 0.5 9.5 9.5M9.5 0.5 0.5 9.5" stroke="currentColor" stroke-width="1.3" /></svg>
           </button>
           <h2 id="entry-modal-title">Подбор подключения</h2>
@@ -481,6 +499,16 @@ h2 {
   cursor: default;
 }
 
+.entry-modal.shaking {
+  animation: shake 0.42s ease;
+}
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  45% { transform: translateX(6px); }
+  70% { transform: translateX(-3px); }
+}
+
 .close-btn {
   position: absolute;
   top: 14px;
@@ -531,6 +559,7 @@ h2 {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .entry-modal.shaking,
   .point,
   .point.checking .point-ping,
   .point.checking .point-state,
