@@ -8,10 +8,22 @@ import { rulesState } from '../store/rules.js';
 import SkinFace from './SkinFace.vue';
 import MacTrafficLights from './MacTrafficLights.vue';
 import { isMac } from '../utils/platform.js';
-import rulesIcon from '../assets/rules.svg?raw';
-import wikiIcon from '../assets/wiki.svg?raw';
-import folderIcon from '../assets/folder.svg?raw';
-import gamepadIcon from '../assets/gamepad.svg?raw';
+import ghostIcon from '../assets/ghost.svg?raw';
+import profileRulesIcon from '../assets/profile-rules.svg?raw';
+import profileHelpIcon from '../assets/profile-help.svg?raw';
+import profileFolderIcon from '../assets/profile-folder.svg?raw';
+import profileLogsIcon from '../assets/profile-logs.svg?raw';
+import elyByFavicon from '../assets/elyby-favicon.ico';
+
+function tintIcon(svg) {
+  return svg
+    .replace(/<\?xml[^>]*\?>/gi, '')
+    .replace(/<!DOCTYPE[\s\S]*?>/gi, '')
+    .replace(/<!--[^]*?-->/g, '')
+    .replace(/<style[^>]*>([^]*?)<\/style>/gi, (_, rules) => `<style>${rules.replace(/#[\da-f]{3,8}/gi, 'currentColor')}</style>`)
+    .replace(/(fill|stroke)="(?:#[\da-f]{3,8}|black|white)"/gi, '$1="currentColor"')
+    .replace(/(<rect[^>]*?)fill="currentColor"/gi, '$1fill="none"');
+}
 
 function openUpdateModal() {
   updateState.available = true;
@@ -62,10 +74,16 @@ const displayRank = computed(() => (accountStore.loggedIn ? accountStore.provide
 
 const { authError, loginMicrosoft, loginElyBy, logout } = useLogin();
 const menuOpen = ref(false);
+const loginChoiceOpen = ref(false);
 const accountWrapEl = ref(null);
 
 function toggleMenu() {
   menuOpen.value = !menuOpen.value;
+}
+
+function openLoginChoice() {
+  menuOpen.value = false;
+  loginChoiceOpen.value = true;
 }
 
 function activateQuickLink(link) {
@@ -74,10 +92,7 @@ function activateQuickLink(link) {
 }
 
 function openPersonalAccount() {
-  const target = accountStore.provider === 'Ely.by'
-    ? 'https://account.ely.by/'
-    : 'https://www.minecraft.net/msaprofile';
-  openExternal(target);
+  openExternal('https://lemicraft.ru/profile');
   menuOpen.value = false;
 }
 
@@ -87,15 +102,27 @@ function handleOutsideClick(event) {
   }
 }
 
-onMounted(() => document.addEventListener('click', handleOutsideClick));
-onUnmounted(() => document.removeEventListener('click', handleOutsideClick));
+function handleLoginChoiceKeydown(event) {
+  if (event.key === 'Escape') loginChoiceOpen.value = false;
+}
+
+onMounted(() => {
+  document.addEventListener('click', handleOutsideClick);
+  document.addEventListener('keydown', handleLoginChoiceKeydown);
+});
+onUnmounted(() => {
+  document.removeEventListener('click', handleOutsideClick);
+  document.removeEventListener('keydown', handleLoginChoiceKeydown);
+});
 
 async function handleLoginMicrosoft() {
+  loginChoiceOpen.value = false;
   await loginMicrosoft();
   menuOpen.value = false;
 }
 
 async function handleLoginElyBy() {
+  loginChoiceOpen.value = false;
   await loginElyBy();
   menuOpen.value = false;
 }
@@ -125,14 +152,14 @@ async function openExternal(target) {
 }
 
 const quickLinks = [
-  { id: 'rules', title: 'Правила сервера', icon: rulesIcon, action: () => emit('navigate', 'rules') },
-  { id: 'wiki', title: 'Вики проекта', icon: wikiIcon, action: () => openExternal('https://wiki.lemicraft.ru') },
-  { id: 'folder', title: 'Папка Minecraft', icon: folderIcon, action: async () => {
+  { id: 'rules', title: 'Правила', icon: profileRulesIcon, action: () => emit('navigate', 'rules') },
+  { id: 'wiki', title: 'Помощь', icon: profileHelpIcon, action: () => openExternal('https://wiki.lemicraft.ru') },
+  { id: 'folder', title: 'Папка игры', icon: profileFolderIcon, action: async () => {
     if (!window.__TAURI_INTERNALS__) return;
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('open_game_folder');
   } },
-  { id: 'logs', title: 'Логи игры', icon: gamepadIcon, action: async () => {
+  { id: 'logs', title: 'Логи', icon: profileLogsIcon, action: async () => {
     if (!window.__TAURI_INTERNALS__) return;
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('open_logs_window');
@@ -193,7 +220,16 @@ const quickLinks = [
           <div v-if="accountStore.loggedIn" class="profile-head">
             <div class="profile-details">
               <span class="profile-name">{{ displayName }}</span>
-              <span class="profile-provider">{{ displayRank }}</span>
+              <span class="profile-provider">
+                <svg v-if="accountStore.provider === 'Microsoft'" class="provider-microsoft-mark" viewBox="0 0 24 24" aria-hidden="true">
+                  <path fill="#f25022" d="M1 1h10v10H1z" />
+                  <path fill="#7fba00" d="M13 1h10v10H13z" />
+                  <path fill="#00a4ef" d="M1 13h10v10H1z" />
+                  <path fill="#ffb900" d="M13 13h10v10H13z" />
+                </svg>
+                <img v-else-if="accountStore.provider === 'Ely.by'" class="provider-elyby-mark" :src="elyByFavicon" alt="" />
+                {{ displayRank }}
+              </span>
             </div>
             <SkinFace
               v-if="accountStore.skinUrl"
@@ -216,10 +252,11 @@ const quickLinks = [
                 <span class="profile-name">Гость</span>
                 <span class="profile-provider">Войдите в аккаунт</span>
               </div>
-              <div class="profile-avatar">Г</div>
+              <div class="profile-avatar guest-avatar" v-html="tintIcon(ghostIcon)"></div>
             </div>
-            <button class="menu-item" @click="handleLoginMicrosoft">Войти через Microsoft</button>
-            <button class="menu-item" @click="handleLoginElyBy">Войти через Ely.by</button>
+            <button class="menu-account-link guest-login-button" @click="openLoginChoice">
+              Войти
+            </button>
           </div>
 
           <div class="quick-links-grid">
@@ -231,23 +268,52 @@ const quickLinks = [
               :aria-current="link.id === active ? 'page' : undefined"
               @click="activateQuickLink(link)"
             >
-              <span class="quick-link-icon" aria-hidden="true" v-html="link.icon" />
+              <span class="quick-link-icon" aria-hidden="true" v-html="tintIcon(link.icon)" />
               <span>{{ link.title }}</span>
             </button>
           </div>
 
-          <div v-if="!accountStore.loggedIn" class="menu-register">
-            <span @click="openExternal('https://account.ely.by/register')">Нет аккаунта Ely.by?</span>
-            <span @click="openExternal('https://www.minecraft.net/store/minecraft-java-bedrock-edition-pc')">Купить Minecraft</span>
-          </div>
           <p v-if="authError" class="menu-error">{{ authError }}</p>
           <button v-if="accountStore.loggedIn" class="menu-logout" @click="handleLogout">Выйти</button>
         </div>
       </Transition>
 
+      <div
+        v-if="loginChoiceOpen"
+        class="login-choice-overlay"
+        role="presentation"
+        @click.self="loginChoiceOpen = false"
+      >
+          <section class="login-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="login-choice-title">
+            <button class="login-choice-close" aria-label="Закрыть" @click="loginChoiceOpen = false">×</button>
+            <h2 id="login-choice-title">Войти в аккаунт</h2>
+            <p>Выберите способ входа</p>
+            <button class="provider-choice" @click="handleLoginMicrosoft">
+              <svg class="microsoft-logo" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="#f25022" d="M1 1h10v10H1z" />
+                <path fill="#7fba00" d="M13 1h10v10H13z" />
+                <path fill="#00a4ef" d="M1 13h10v10H1z" />
+                <path fill="#ffb900" d="M13 13h10v10H13z" />
+              </svg>
+              <span>Продолжить с Microsoft</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+            <button class="provider-choice" @click="handleLoginElyBy">
+              <img class="provider-dialog-elyby-mark" :src="elyByFavicon" alt="" />
+              <span>Продолжить с Ely.by</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+            </button>
+            <div class="login-choice-links">
+              <button @click="openExternal('https://account.ely.by/register')">Нет аккаунта Ely.by?</button>
+              <button @click="openExternal('https://www.minecraft.net/store/minecraft-java-bedrock-edition-pc')">Купить Minecraft</button>
+            </div>
+          </section>
+        </div>
+
       <button class="account" @click="toggleMenu">
         <SkinFace v-if="accountStore.loggedIn && accountStore.skinUrl" :url="accountStore.skinUrl" :size="32" :radius="9" />
         <div v-else-if="accountStore.loggedIn && accountStore.skinLoading" class="avatar skeleton"></div>
+        <div v-else-if="!accountStore.loggedIn" class="avatar guest-avatar" v-html="tintIcon(ghostIcon)"></div>
         <div v-else class="avatar">
           {{ displayName.charAt(0) }}
         </div>
@@ -521,7 +587,7 @@ const quickLinks = [
 .account-rank {
   font-size: 14px;
   line-height: 1.05;
-  color: var(--gold);
+  color: var(--text-muted);
 }
 
 .chevron {
@@ -541,9 +607,9 @@ const quickLinks = [
   width: 212px;
   background: #1d1c22;
   border: 1px solid var(--border);
-  border-radius: 20px;
+  border-radius: 24px;
   box-shadow: var(--shadow-pop);
-  padding: 20px 8px 8px;
+  padding: 14px 8px 8px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -555,12 +621,14 @@ const quickLinks = [
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 5px;
   min-width: 0;
 }
 .profile-skin {
   flex-shrink: 0;
   margin-top: 2px;
+  outline: 2px solid #49444f;
+  outline-offset: 2px;
 }
 .skeleton {
   color: transparent;
@@ -576,11 +644,22 @@ const quickLinks = [
   flex-shrink: 0;
   display: grid;
   place-items: center;
-  border-radius: 10px;
-  background: var(--surface);
+  border-radius: 12px;
+  background: #111013;
+  border: 2px solid #49444f;
   color: var(--text-muted);
   font-size: 26px;
   font-weight: 700;
+}
+.profile-avatar :deep(svg),
+.avatar.guest-avatar :deep(svg) {
+  display: block;
+  width: 62%;
+  height: 62%;
+}
+.avatar.guest-avatar :deep(svg) {
+  width: 19px;
+  height: 19px;
 }
 .profile-details {
   width: 100%;
@@ -593,7 +672,7 @@ const quickLinks = [
 .profile-name {
   max-width: 100%;
   color: var(--text);
-  font-size: 16px;
+  font-size: 17px;
   line-height: 1.05;
   font-weight: 700;
   overflow: hidden;
@@ -601,58 +680,89 @@ const quickLinks = [
   white-space: nowrap;
 }
 .profile-provider {
-  color: var(--gold);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
   font-size: 14px;
   line-height: 1.05;
 }
+.provider-microsoft-mark {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+}
+.provider-elyby-mark {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  image-rendering: pixelated;
+}
 .menu-account-link {
-  margin-top: 8px;
-  height: 32px;
+  margin-top: 2px;
+  height: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   padding: 0 8px;
-  border: 1px solid #3a3032;
-  border-radius: 9px;
-  background: #bd0000;
-  color: #fff;
-  font: 700 12px var(--font-body);
+  border: 1px solid #59383c;
+  border-radius: 14px;
+  background: #642e33;
+  color: #ffa2a8;
+  font: 700 14px var(--font-body);
   cursor: pointer;
   transition: background 0.15s ease;
 }
 .menu-account-link:hover {
-  background: #d00000;
+  background: #76373d;
+}
+.guest-login-button {
+  margin-top: 0;
+  background: transparent;
+  border-color: var(--border);
+  color: var(--text);
+}
+.guest-login-button:hover {
+  background: var(--surface-hover);
 }
 .guest-login {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 .guest-heading {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
+}
+.provider-mark {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  display: grid;
+  place-items: center;
+  border-radius: 5px;
 }
 .quick-links-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 6px 4px;
+  gap: 7px 5px;
 }
 .quick-link-card {
   -webkit-app-region: no-drag;
   min-width: 0;
-  height: 36px;
+  height: 46px;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
-  gap: 2px;
-  padding: 2px 4px 2px 7px;
+  gap: 5px;
+  padding: 3px 8px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 12px;
   background: transparent;
   color: var(--text);
   text-align: center;
-  font: 700 10px/1.1 var(--font-body);
+  font: 700 11px/1.1 var(--font-body);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
@@ -670,48 +780,115 @@ const quickLinks = [
   min-width: 0;
 }
 .quick-link-card:nth-child(odd) {
-  flex-direction: row-reverse;
-  padding-left: 4px;
-  padding-right: 4px;
+  flex-direction: row;
 }
 .quick-link-icon {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #5b5662;
+  color: #77717f;
 }
 .quick-link-icon :deep(svg) {
   display: block;
   width: 100%;
   height: 100%;
 }
-.menu-item {
-  text-align: left;
-  padding: 8px;
-  border-radius: 7px;
-  border: none;
+.quick-link-icon :deep(path),
+.quick-link-icon :deep(circle),
+.quick-link-icon :deep(g) {
+  stroke: currentColor;
+}
+.login-choice-overlay {
+  -webkit-app-region: no-drag;
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(8, 7, 9, 0.68);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+.login-choice-dialog {
+  position: relative;
+  width: min(360px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 28px 24px 24px;
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface);
+  box-shadow: var(--shadow-pop);
+}
+.login-choice-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-faint);
+  font: 400 24px/1 var(--font-body);
+  cursor: pointer;
+}
+.login-choice-close:hover { background: var(--surface-hover); color: var(--text); }
+.login-choice-dialog h2 {
+  margin-top: 4px;
+  color: var(--text);
+  font: 800 19px/1.2 var(--font-display);
+}
+.login-choice-dialog > p { margin: -3px 0 8px; color: var(--text-muted); font-size: 13px; }
+.provider-choice {
+  width: 100%;
+  min-height: 50px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
   background: transparent;
   color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
+  font: 650 13px var(--font-body);
+  text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
 }
-.menu-item:hover {
-  background: var(--surface-hover);
+.provider-choice:hover { background: var(--surface-hover); border-color: var(--text-faint); transform: translateY(-1px); }
+.provider-choice > span:nth-child(2) { flex: 1; }
+.provider-choice > svg:last-child { width: 16px; height: 16px; fill: none; stroke: var(--text-faint); stroke-width: 1.8; }
+.provider-choice > .microsoft-logo { width: 22px; height: 22px; flex: 0 0 22px; }
+.provider-dialog-elyby-mark { width: 22px; height: 22px; flex: 0 0 22px; image-rendering: pixelated; }
+.login-choice-links {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
 }
-.menu-item.danger {
-  color: var(--bad);
+.login-choice-links button {
+  max-width: 50%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font: 12px/1.35 var(--font-body);
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease;
 }
-.menu-item.danger:hover {
-  background: var(--bad-soft);
-}
-
+.login-choice-links button:hover { color: var(--text); }
 .menu-logout {
-  height: 22px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -735,30 +912,21 @@ const quickLinks = [
   overflow-wrap: anywhere;
 }
 
-.menu-register {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px 2px;
-}
-.menu-register span {
-  font-size: 11px;
-  color: var(--text-faint);
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-.menu-register span:hover {
-  color: var(--accent);
-}
-
 .menu-enter-active,
 .menu-leave-active {
   transform-origin: bottom left;
-  transition: opacity 0.22s ease, transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
 }
 .menu-enter-from,
 .menu-leave-to {
   opacity: 0;
-  transform: translateY(8px) scale(0.96);
+  transform: translateY(14px) scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-enter-active,
+  .menu-leave-active {
+    transition-duration: 0.01ms;
+  }
 }
 </style>

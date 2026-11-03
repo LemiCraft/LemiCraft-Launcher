@@ -9,6 +9,7 @@ export const serverStatus = reactive({
   maxPlayers: null,
   version: '',
   ping: null,
+  playersSample: [],
 });
 
 let pollTimer = null;
@@ -20,6 +21,7 @@ function applyStatus(status) {
   serverStatus.maxPlayers = status.players_max;
   serverStatus.version = status.version;
   serverStatus.ping = Math.round(status.latency_ms);
+  serverStatus.playersSample = Array.isArray(status.players_sample) ? status.players_sample : [];
 }
 
 export async function fetchServerStatus() {

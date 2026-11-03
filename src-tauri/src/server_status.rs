@@ -61,6 +61,15 @@ pub struct ServerStatusInfo {
     version: String,
     latency_ms: f64,
     motd: String,
+    #[serde(default)]
+    players_sample: Vec<ServerPlayerSample>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct ServerPlayerSample {
+    name: String,
+    #[serde(default)]
+    id: Option<String>,
 }
 
 fn status_cache_path() -> std::path::PathBuf {
@@ -121,6 +130,25 @@ async fn get_server_status_live() -> Result<ServerStatusInfo, String> {
     let players = result.get("players");
     let players_online = players.and_then(|p| p.get("online")).and_then(Value::as_i64).unwrap_or(0);
     let players_max = players.and_then(|p| p.get("max")).and_then(Value::as_i64).unwrap_or(0);
+    let players_sample = players
+        .and_then(|p| p.get("sample"))
+        .and_then(Value::as_array)
+        .map(|sample| {
+            sample
+                .iter()
+                .filter_map(|player| {
+                    let name = player.get("name")?.as_str()?.trim();
+                    if name.is_empty() {
+                        return None;
+                    }
+                    Some(ServerPlayerSample {
+                        name: name.to_string(),
+                        id: player.get("id").and_then(Value::as_str).map(str::to_string),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let version = result
         .get("version")
         .and_then(|v| v.get("name"))
@@ -129,7 +157,7 @@ async fn get_server_status_live() -> Result<ServerStatusInfo, String> {
         .to_string();
     let motd = result.get("description").map(motd_text).unwrap_or_default();
 
-    Ok(ServerStatusInfo { online: true, players_online, players_max, version, latency_ms, motd })
+    Ok(ServerStatusInfo { online: true, players_online, players_max, version, latency_ms, motd, players_sample })
 }
 
 /// Flattens a chat-component `description` field (plain string, or
