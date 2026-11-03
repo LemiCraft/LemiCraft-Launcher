@@ -1,3 +1,15 @@
+<script>
+// every title has to fit one line of the card at the narrowest window, or the card changes its height
+const heroTitles = ['Все в сборе, ждём тебя!', 'Лапки чешутся? Заходи!', 'Готов залетать?'];
+let previousHeroTitleIndex = -1;
+
+function chooseHeroTitle() {
+  const available = heroTitles.map((_, index) => index).filter((index) => index !== previousHeroTitleIndex);
+  previousHeroTitleIndex = available[Math.floor(Math.random() * available.length)];
+  return heroTitles[previousHeroTitleIndex];
+}
+</script>
+
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { accountStore } from '../store/account.js';
@@ -12,22 +24,17 @@ const bannerImages = Object.entries(import.meta.glob('../assets/banner*.jpg', { 
   .map(([, imageUrl]) => imageUrl);
 const currentBanner = ref(0);
 let bannerTimer;
-const heroTitles = [
-  'Все в сборе, не хватает только тебя!',
-  'Лапки чешутся? Заходи!',
-  'Готов залетать?',
-];
-let previousHeroTitleIndex = -1;
-function chooseHeroTitle() {
-  const available = heroTitles.map((_, index) => index).filter((index) => index !== previousHeroTitleIndex);
-  const index = available[Math.floor(Math.random() * available.length)];
-  previousHeroTitleIndex = index;
-  return heroTitles[index];
-}
 const heroTitle = ref(chooseHeroTitle());
+
+// an avatar that did not load is left out instead of showing a broken picture
+const failedAvatars = ref(new Set());
+function avatarFailed(player) {
+  failedAvatars.value = new Set(failedAvatars.value).add(player.name);
+}
 const visiblePlayers = computed(() =>
   serverStatus.playersSample
     .filter((player, index, players) => player?.name && players.findIndex((candidate) => candidate?.name === player.name) === index)
+    .filter((player) => !failedAvatars.value.has(player.name))
     .slice(0, 3),
 );
 const otherPlayersCount = computed(() => Math.max(0, (serverStatus.players ?? 0) - visiblePlayers.value.length));
@@ -115,6 +122,7 @@ onUnmounted(() => {
               :alt="player.name"
               :title="player.name"
               loading="lazy"
+              @error="avatarFailed(player)"
             />
             <span v-if="otherPlayersCount > 0" class="player-overflow" :title="`Ещё ${otherPlayersCount} игроков`">
               +{{ otherPlayersCount }}
@@ -227,6 +235,9 @@ h1 {
   font-weight: 800;
   color: #fff;
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   text-shadow: 0 2px 16px rgba(0,0,0,.55);
 }
 
@@ -351,9 +362,10 @@ h1 {
 .player-overflow {
   position: relative;
   z-index: 1;
-  width: 22px;
   min-width: 22px;
   height: 22px;
+  padding: 0 4px;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -363,7 +375,7 @@ h1 {
   border-radius: 50%;
   background: #174429;
   color: #baf4c7;
-  font-size: 7.5px;
+  font-size: 10px;
   font-weight: 700;
   line-height: 1;
 }

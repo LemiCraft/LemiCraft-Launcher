@@ -10,7 +10,7 @@ import MacTrafficLights from './MacTrafficLights.vue';
 import { isMac } from '../utils/platform.js';
 import ghostIcon from '../assets/ghost.svg?raw';
 import profileRulesIcon from '../assets/profile-rules.svg?raw';
-import profileHelpIcon from '../assets/profile-help.svg?raw';
+import profileWikiIcon from '../assets/profile-wiki.svg?raw';
 import profileFolderIcon from '../assets/profile-folder.svg?raw';
 import profileLogsIcon from '../assets/profile-logs.svg?raw';
 import elyByFavicon from '../assets/elyby-favicon.ico';
@@ -153,7 +153,7 @@ async function openExternal(target) {
 
 const quickLinks = [
   { id: 'rules', title: 'Правила', icon: profileRulesIcon, action: () => emit('navigate', 'rules') },
-  { id: 'wiki', title: 'Помощь', icon: profileHelpIcon, action: () => openExternal('https://wiki.lemicraft.ru') },
+  { id: 'wiki', title: 'Вики', icon: profileWikiIcon, action: () => openExternal('https://wiki.lemicraft.ru') },
   { id: 'folder', title: 'Папка игры', icon: profileFolderIcon, action: async () => {
     if (!window.__TAURI_INTERNALS__) return;
     const { invoke } = await import('@tauri-apps/api/core');
