@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { accountStore } from '../store/account.js';
 import { serverStatus, startServerStatusPolling } from '../store/serverStatus.js';
 import { installState, startInstallListeners, launchGame, refreshInstalledState } from '../store/installProgress.js';
@@ -12,6 +12,29 @@ const bannerImages = Object.entries(import.meta.glob('../assets/banner*.jpg', { 
   .map(([, imageUrl]) => imageUrl);
 const currentBanner = ref(0);
 let bannerTimer;
+const heroTitles = [
+  'Все в сборе, не хватает только тебя!',
+  'Лапки чешутся? Заходи!',
+  'Готов залетать?',
+];
+let previousHeroTitleIndex = -1;
+function chooseHeroTitle() {
+  const available = heroTitles.map((_, index) => index).filter((index) => index !== previousHeroTitleIndex);
+  const index = available[Math.floor(Math.random() * available.length)];
+  previousHeroTitleIndex = index;
+  return heroTitles[index];
+}
+const heroTitle = ref(chooseHeroTitle());
+const visiblePlayers = computed(() =>
+  serverStatus.playersSample
+    .filter((player, index, players) => player?.name && players.findIndex((candidate) => candidate?.name === player.name) === index)
+    .slice(0, 3),
+);
+const otherPlayersCount = computed(() => Math.max(0, (serverStatus.players ?? 0) - visiblePlayers.value.length));
+
+function playerAvatarUrl(player) {
+  return `https://lemicraft.ru/api/avatar/${encodeURIComponent(player.name)}?size=64`;
+}
 
 // the next image is decoded first, so the cross-fade never shows an empty card
 function showNextBanner() {
@@ -52,10 +75,7 @@ onUnmounted(() => {
         <span class="dot" :class="{ off: serverStatus.loaded && !serverStatus.online }"></span>
         {{ !serverStatus.loaded ? 'Проверка сервера...' : serverStatus.online ? 'Сервер онлайн' : 'Сервер офлайн' }}
       </span>
-      <h1>Готов залетать?</h1>
-      <p class="sub">
-        LemiCraft<span class="sub-players" :class="{ shown: serverStatus.loaded && serverStatus.online }" :aria-hidden="!(serverStatus.loaded && serverStatus.online)"> · {{ serverStatus.players ?? 0 }} игроков сейчас в игре</span>
-      </p>
+      <h1>{{ heroTitle }}</h1>
 
       <button
         class="play-btn"
@@ -83,16 +103,35 @@ onUnmounted(() => {
       </button>
 
       <div v-if="serverStatus.loaded && serverStatus.online" class="chips">
-        <span class="chip">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5Zm0 8.5L4.5 7 12 3.5 19.5 7 12 10.5ZM4 9.5v6.7L12 20l8-3.8V9.5l-8 4-8-4Z"/></svg>
-          MC {{ serverStatus.version }}
+        <span class="chip online-chip">
+          <span class="online-dot"></span>
+          {{ serverStatus.players ?? 0 }} онлайн
+          <span v-if="visiblePlayers.length" class="player-avatar-stack" aria-label="Игроки онлайн">
+            <img
+              v-for="player in visiblePlayers"
+              :key="player.id || player.name"
+              class="player-avatar"
+              :src="playerAvatarUrl(player)"
+              :alt="player.name"
+              :title="player.name"
+              loading="lazy"
+            />
+            <span v-if="otherPlayersCount > 0" class="player-overflow" :title="`Ещё ${otherPlayersCount} игроков`">
+              +{{ otherPlayersCount }}
+            </span>
+          </span>
         </span>
         <span class="chip mono">
           <span class="ping-dot" :class="pingQuality(serverStatus.ping)"></span>
           {{ serverStatus.ping }} мс
         </span>
+        <span class="chip">
+          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5Zm0 8.5L4.5 7 12 3.5 19.5 7 12 10.5ZM4 9.5v6.7L12 20l8-3.8V9.5l-8 4-8-4Z"/></svg>
+          MC {{ serverStatus.version }}
+        </span>
       </div>
       <div v-else-if="!serverStatus.loaded" class="chips">
+        <span class="chip-skeleton online-skeleton"></span>
         <span class="chip-skeleton"></span>
         <span class="chip-skeleton short"></span>
       </div>
@@ -160,7 +199,6 @@ onUnmounted(() => {
   letter-spacing: 0.02em;
   text-transform: uppercase;
 }
-
 .dot {
   width: 7px;
   height: 7px;
@@ -172,10 +210,7 @@ onUnmounted(() => {
   background: var(--bad);
   box-shadow: 0 0 0 3px var(--bad-soft);
 }
-
-.eyebrow.pending {
-  color: var(--text-faint);
-}
+.eyebrow.pending { color: var(--text-faint); }
 .eyebrow.pending .dot {
   background: var(--text-faint);
   box-shadow: 0 0 0 3px var(--surface-2);
@@ -193,20 +228,6 @@ h1 {
   color: #fff;
   margin-top: 2px;
   text-shadow: 0 2px 16px rgba(0,0,0,.55);
-}
-
-.sub {
-  color: rgba(255,255,255,.82);
-  font-size: 14.5px;
-  margin-bottom: 6px;
-}
-/* always in the layout, so the line does not jump when the status arrives */
-.sub-players {
-  opacity: 0;
-  transition: opacity 0.4s ease;
-}
-.sub-players.shown {
-  opacity: 1;
 }
 
 .play-btn {
@@ -299,6 +320,53 @@ h1 {
 .chip.mono {
   font-family: var(--font-mono);
 }
+.online-chip {
+  color: #a8f0b8;
+  background: rgba(34, 139, 70, 0.22);
+  border-color: rgba(109, 226, 139, 0.34);
+  font-weight: 650;
+}
+.online-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #54e47c;
+  box-shadow: 0 0 0 3px rgba(84, 228, 124, 0.17);
+}
+.player-avatar-stack {
+  display: inline-flex;
+  align-items: center;
+  padding-left: 3px;
+}
+.player-avatar {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin-left: -4px;
+  border: 1.5px solid #225a37;
+  border-radius: 50%;
+  background: #17261c;
+  object-fit: cover;
+}
+.player-overflow {
+  position: relative;
+  z-index: 1;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: -3px;
+  padding: 0;
+  border: 1.5px solid #225a37;
+  border-radius: 50%;
+  background: #174429;
+  color: #baf4c7;
+  font-size: 7.5px;
+  font-weight: 700;
+  line-height: 1;
+}
 
 .ping-dot {
   width: 6px;
@@ -328,6 +396,9 @@ h1 {
 }
 .chip-skeleton.short {
   width: 64px;
+}
+.chip-skeleton.online-skeleton {
+  width: 104px;
 }
 
 .hero-banner {
