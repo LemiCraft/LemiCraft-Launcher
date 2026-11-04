@@ -1,6 +1,18 @@
 <script>
 // every title has to fit one line of the card at the narrowest window, or the card changes its height
-const heroTitles = ['Все в сборе, ждём тебя!', 'Лапки чешутся? Заходи!', 'Готов залетать?'];
+const heroTitles = [
+  'Все в сборе, ждём тебя!',
+  'Лапки чешутся? Заходи!',
+  'Готов залетать?',
+  'Пушистики уже заждались',
+  'Мир ждёт твои лапки!',
+  'Заходи, у нас уютно',
+  'Пора за приключениями!',
+  'Сервер скучает без тебя',
+  'Пора вернуться домой!',
+  'Хвост трубой, и в игру!',
+  'Лапки готовы? Поехали!',
+];
 let previousHeroTitleIndex = -1;
 
 function chooseHeroTitle() {
