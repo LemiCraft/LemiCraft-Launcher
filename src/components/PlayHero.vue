@@ -38,10 +38,15 @@ const currentBanner = ref(0);
 let bannerTimer;
 const heroTitle = ref(chooseHeroTitle());
 
-// an avatar that did not load is left out instead of showing a broken picture
+// an avatar that did not load is left out instead of showing a broken picture; one that has loaded fades in
+// over its placeholder circle instead of popping up
 const failedAvatars = ref(new Set());
+const loadedAvatars = ref(new Set());
 function avatarFailed(player) {
   failedAvatars.value = new Set(failedAvatars.value).add(player.name);
+}
+function avatarLoaded(player) {
+  loadedAvatars.value = new Set(loadedAvatars.value).add(player.name);
 }
 const visiblePlayers = computed(() =>
   serverStatus.playersSample
@@ -121,40 +126,62 @@ onUnmounted(() => {
         }}
       </button>
 
-      <div v-if="serverStatus.loaded && serverStatus.online" class="chips">
-        <span class="chip online-chip">
-          <span class="online-dot"></span>
-          {{ serverStatus.players ?? 0 }} онлайн
-          <span v-if="visiblePlayers.length" class="player-avatar-stack" aria-label="Игроки онлайн">
-            <img
-              v-for="player in visiblePlayers"
-              :key="player.id || player.name"
-              class="player-avatar"
-              :src="playerAvatarUrl(player)"
-              :alt="player.name"
-              :title="player.name"
-              loading="lazy"
-              @error="avatarFailed(player)"
-            />
-            <span v-if="otherPlayersCount > 0" class="player-overflow" :title="`Ещё ${otherPlayersCount} игроков`">
-              +{{ otherPlayersCount }}
+      <Transition name="chips" mode="out-in">
+        <div v-if="serverStatus.loaded && serverStatus.online" key="online" class="chips">
+          <span class="chip online-chip">
+            <span class="online-dot"></span>
+            <!-- a number that changes is cross-faded in its own place, so the chip does not twitch -->
+            <span class="swap-slot">
+              <Transition name="chip-swap">
+                <span :key="serverStatus.players ?? 0" class="swap-item">{{ serverStatus.players ?? 0 }}</span>
+              </Transition>
             </span>
+            онлайн
+            <TransitionGroup name="avatar" tag="span" class="player-avatar-stack" :class="{ filled: visiblePlayers.length }" aria-label="Игроки онлайн">
+              <span
+                v-for="player in visiblePlayers"
+                :key="player.id || player.name"
+                class="player-avatar"
+                :title="player.name"
+              >
+                <img
+                  class="player-avatar-img"
+                  :class="{ ready: loadedAvatars.has(player.name) }"
+                  :src="playerAvatarUrl(player)"
+                  :alt="player.name"
+                  @load="avatarLoaded(player)"
+                  @error="avatarFailed(player)"
+                />
+              </span>
+              <span v-if="otherPlayersCount > 0" key="more" class="player-overflow" :title="`Ещё ${otherPlayersCount} игроков`">
+                <span class="swap-slot">
+                  <Transition name="chip-swap">
+                    <span :key="otherPlayersCount" class="swap-item">+{{ otherPlayersCount }}</span>
+                  </Transition>
+                </span>
+              </span>
+            </TransitionGroup>
           </span>
-        </span>
-        <span class="chip mono">
-          <span class="ping-dot" :class="pingQuality(serverStatus.ping)"></span>
-          {{ serverStatus.ping }} мс
-        </span>
-        <span class="chip">
-          <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5Zm0 8.5L4.5 7 12 3.5 19.5 7 12 10.5ZM4 9.5v6.7L12 20l8-3.8V9.5l-8 4-8-4Z"/></svg>
-          MC {{ serverStatus.version }}
-        </span>
-      </div>
-      <div v-else-if="!serverStatus.loaded" class="chips">
-        <span class="chip-skeleton online-skeleton"></span>
-        <span class="chip-skeleton"></span>
-        <span class="chip-skeleton short"></span>
-      </div>
+          <span class="chip mono">
+            <span class="ping-dot" :class="pingQuality(serverStatus.ping)"></span>
+            <span class="swap-slot">
+              <Transition name="chip-swap">
+                <span :key="serverStatus.ping" class="swap-item">{{ serverStatus.ping }}</span>
+              </Transition>
+            </span>
+            мс
+          </span>
+          <span class="chip">
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5Zm0 8.5L4.5 7 12 3.5 19.5 7 12 10.5ZM4 9.5v6.7L12 20l8-3.8V9.5l-8 4-8-4Z"/></svg>
+            MC {{ serverStatus.version }}
+          </span>
+        </div>
+        <div v-else-if="!serverStatus.loaded" key="loading" class="chips">
+          <span class="chip-skeleton online-skeleton"></span>
+          <span class="chip-skeleton"></span>
+          <span class="chip-skeleton short"></span>
+        </div>
+      </Transition>
     </div>
 
     <Transition name="banner">
@@ -359,21 +386,84 @@ h1 {
 .player-avatar-stack {
   display: inline-flex;
   align-items: center;
+  padding-left: 0;
+  transition: padding-left 0.35s ease;
+}
+.player-avatar-stack.filled {
   padding-left: 3px;
 }
 .player-avatar {
   width: 20px;
   height: 20px;
+  max-width: 22px;
   flex: 0 0 20px;
   margin-left: -4px;
+  box-sizing: border-box;
   border: 1.5px solid #225a37;
   border-radius: 50%;
   background: #17261c;
+  overflow: hidden;
+}
+.player-avatar-img {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+.player-avatar-img.ready {
+  opacity: 1;
+}
+/* an avatar grows in and out of the stack, and the chip widens with it */
+.avatar-enter-active,
+.avatar-leave-active {
+  transition: max-width 0.35s ease, min-width 0.35s ease, margin-left 0.35s ease, padding 0.35s ease, opacity 0.3s ease;
+}
+.player-avatar-stack > .avatar-enter-from,
+.player-avatar-stack > .avatar-leave-to {
+  max-width: 0;
+  min-width: 0;
+  margin-left: 0;
+  padding: 0;
+  opacity: 0;
+}
+
+/* a changing number: the old one fades up, the new one comes from below, both in the same place */
+.swap-slot {
+  display: inline-grid;
+}
+.swap-slot > .swap-item {
+  grid-area: 1 / 1;
+  text-align: center;
+}
+.chip-swap-enter-active,
+.chip-swap-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+.chip-swap-enter-from {
+  opacity: 0;
+  transform: translateY(5px);
+}
+.chip-swap-leave-to {
+  opacity: 0;
+  transform: translateY(-5px);
+}
+
+/* the row of chips replaces the placeholders with a short fade instead of at once */
+.chips-enter-active,
+.chips-leave-active {
+  transition: opacity 0.18s ease;
+}
+.chips-enter-from,
+.chips-leave-to {
+  opacity: 0;
 }
 .player-overflow {
   position: relative;
   z-index: 1;
+  max-width: 40px;
+  overflow: hidden;
   min-width: 22px;
   height: 22px;
   padding: 0 4px;
