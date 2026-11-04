@@ -696,6 +696,7 @@ const quickLinks = [
   width: 13px;
   height: 13px;
   flex: 0 0 13px;
+  border-radius: 3.5px;
   image-rendering: pixelated;
 }
 .menu-account-link {
@@ -867,7 +868,7 @@ const quickLinks = [
 .provider-choice > span:nth-child(2) { flex: 1; }
 .provider-choice > svg:last-child { width: 16px; height: 16px; fill: none; stroke: var(--text-faint); stroke-width: 1.8; }
 .provider-choice > .microsoft-logo { width: 22px; height: 22px; flex: 0 0 22px; }
-.provider-dialog-elyby-mark { width: 22px; height: 22px; flex: 0 0 22px; image-rendering: pixelated; }
+.provider-dialog-elyby-mark { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 6px; image-rendering: pixelated; }
 .login-choice-links {
   width: 100%;
   display: flex;
@@ -912,16 +913,16 @@ const quickLinks = [
   overflow-wrap: anywhere;
 }
 
+/* the menu sits right above its button, so it only rises: no scaling, which looked like it grew out of the left corner */
 .menu-enter-active,
 .menu-leave-active {
-  transform-origin: bottom left;
   transition: opacity 0.2s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
 }
 .menu-enter-from,
 .menu-leave-to {
   opacity: 0;
-  transform: translateY(14px) scale(0.97);
+  transform: translateY(12px);
 }
 @media (prefers-reduced-motion: reduce) {
   .menu-enter-active,
