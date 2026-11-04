@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import NewsModal from './NewsModal.vue';
 import { parseInline, previewText, replaceDiscordTimestamps, shortDisplayTitle } from '../utils/newsMarkdown.js';
 import { newsState, fetchNews, loadMoreNews } from '../store/news.js';
@@ -46,6 +46,17 @@ function onScroll() {
 function openNews(item) {
   openItem.value = item;
 }
+
+// The next page is requested on scrolling. When the loaded cards do not fill the window there is nothing to
+// scroll, so no page would ever follow: look again after every change of the list until it fills the window
+// or the news end (the site can return fewer cards than asked for while more are still to come)
+watch(
+  () => [newsState.items.length, newsState.hasMore],
+  async () => {
+    await nextTick();
+    onScroll();
+  },
+);
 
 onMounted(() => fetchNews());
 </script>
