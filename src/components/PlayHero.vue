@@ -36,6 +36,7 @@ const bannerImages = Object.entries(import.meta.glob('../assets/banner*.jpg', { 
   .map(([, imageUrl]) => imageUrl);
 const currentBanner = ref(0);
 let bannerTimer;
+const VALID_NICKNAME = /^[A-Za-z0-9_]{1,16}$/;
 const heroTitle = ref(chooseHeroTitle());
 
 // an avatar that did not load is left out instead of showing a broken picture; one that has loaded fades in
@@ -50,7 +51,9 @@ function avatarLoaded(player) {
 }
 const visiblePlayers = computed(() =>
   serverStatus.playersSample
-    .filter((player, index, players) => player?.name && players.findIndex((candidate) => candidate?.name === player.name) === index)
+    // the list of a server can hold decorative lines instead of players (a motd in the player list): only real nicknames
+    .filter((player) => VALID_NICKNAME.test(player?.name ?? ''))
+    .filter((player, index, players) => players.findIndex((candidate) => candidate.name === player.name) === index)
     .filter((player) => !failedAvatars.value.has(player.name))
     .slice(0, 3),
 );
