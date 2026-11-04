@@ -278,6 +278,7 @@ const quickLinks = [
         </div>
       </Transition>
 
+      <Transition name="login-choice">
       <div
         v-if="loginChoiceOpen"
         class="login-choice-overlay"
@@ -309,17 +310,31 @@ const quickLinks = [
             </div>
           </section>
         </div>
+      </Transition>
 
       <button class="account" @click="toggleMenu">
-        <SkinFace v-if="accountStore.loggedIn && accountStore.skinUrl" :url="accountStore.skinUrl" :size="32" :radius="9" />
-        <div v-else-if="accountStore.loggedIn && accountStore.skinLoading" class="avatar skeleton"></div>
-        <div v-else-if="!accountStore.loggedIn" class="avatar guest-avatar" v-html="tintIcon(ghostIcon)"></div>
-        <div v-else class="avatar">
-          {{ displayName.charAt(0) }}
+        <!-- the old and the new picture and text sit in the same place while they cross-fade, so nothing around them moves -->
+        <div class="account-avatar-slot">
+          <Transition name="account-fade">
+            <SkinFace v-if="accountStore.loggedIn && accountStore.skinUrl" :key="accountStore.skinUrl" class="account-layer" :url="accountStore.skinUrl" :size="32" :radius="9" />
+            <div v-else-if="accountStore.loggedIn && accountStore.skinLoading" key="skeleton" class="avatar skeleton account-layer"></div>
+            <div v-else-if="!accountStore.loggedIn" key="guest" class="avatar guest-avatar account-layer" v-html="tintIcon(ghostIcon)"></div>
+            <div v-else key="letter" class="avatar account-layer">
+              {{ displayName.charAt(0) }}
+            </div>
+          </Transition>
         </div>
         <div class="account-info">
-          <span class="account-name">{{ displayName }}</span>
-          <span class="account-rank">{{ displayRank }}</span>
+          <span class="account-text-slot">
+            <Transition name="account-fade">
+              <span :key="displayName" class="account-name">{{ displayName }}</span>
+            </Transition>
+          </span>
+          <span class="account-text-slot">
+            <Transition name="account-fade">
+              <span :key="displayRank" class="account-rank">{{ displayRank }}</span>
+            </Transition>
+          </span>
         </div>
         <svg class="chevron" :class="{ open: menuOpen }" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
           <path d="M7 10l5 5 5-5H7Z" />
@@ -563,6 +578,35 @@ const quickLinks = [
   font-size: 14px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+.account-avatar-slot {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+}
+.account-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+.account-text-slot {
+  display: grid;
+  min-width: 0;
+  max-width: 100%;
+}
+.account-text-slot > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+.account-fade-enter-active,
+.account-fade-leave-active {
+  transition: opacity 0.25s ease;
+}
+.account-fade-enter-from,
+.account-fade-leave-to {
+  opacity: 0;
 }
 
 .account-info {
@@ -811,9 +855,24 @@ const quickLinks = [
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgba(8, 7, 9, 0.68);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  background: rgba(8, 7, 9, 0.78);
+}
+.login-choice-enter-active,
+.login-choice-leave-active {
+  transition: opacity 0.2s ease;
+}
+.login-choice-enter-active .login-choice-dialog,
+.login-choice-leave-active .login-choice-dialog {
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+}
+.login-choice-enter-from,
+.login-choice-leave-to {
+  opacity: 0;
+}
+.login-choice-enter-from .login-choice-dialog,
+.login-choice-leave-to .login-choice-dialog {
+  opacity: 0;
+  transform: translateY(14px) scale(0.97);
 }
 .login-choice-dialog {
   position: relative;
@@ -926,7 +985,13 @@ const quickLinks = [
 }
 @media (prefers-reduced-motion: reduce) {
   .menu-enter-active,
-  .menu-leave-active {
+  .menu-leave-active,
+  .login-choice-enter-active,
+  .login-choice-leave-active,
+  .login-choice-enter-active .login-choice-dialog,
+  .login-choice-leave-active .login-choice-dialog,
+  .account-fade-enter-active,
+  .account-fade-leave-active {
     transition-duration: 0.01ms;
   }
 }
