@@ -748,6 +748,8 @@ onBeforeUnmount(() => {
 }
 .swap-leave-active {
   transition: opacity 0.12s ease;
+  /* a placeholder pulses by an animation, which would keep its opacity from the fade */
+  animation: none;
 }
 .swap-enter-from {
   opacity: 0;
@@ -758,6 +760,7 @@ onBeforeUnmount(() => {
 }
 .soft-leave-active {
   transition: opacity 0.35s ease;
+  animation: none;
 }
 .soft-leave-to {
   opacity: 0;
