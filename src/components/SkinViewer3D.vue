@@ -6,32 +6,58 @@ const props = defineProps({
   url: { type: String, required: true },
   width: { type: Number, default: 150 },
   height: { type: Number, default: 210 },
+  // left out, the library's own proportions are used (the same as on the site)
+  zoom: { type: Number, default: undefined },
+  fov: { type: Number, default: undefined },
+  // the figure breathes and turns by itself; off, it stands still and turns only by hand
+  lively: { type: Boolean, default: true },
+  // follow the size of the parent instead of width/height
+  fit: { type: Boolean, default: false },
 });
+const emit = defineEmits(['ready']);
+
+const FIT_RATIO = 0.6;
+const FIT_MAX_HEIGHT = 400;
 
 const canvasEl = ref(null);
 let viewer = null;
+let resizeObserver = null;
 
 onMounted(() => {
   viewer = new SkinViewer({
     canvas: canvasEl.value,
     width: props.width,
     height: props.height,
-    skin: props.url,
-    zoom: 0.65,
-    fov: 35,
-    animation: new IdleAnimation(),
+    ...(props.zoom != null && { zoom: props.zoom }),
+    ...(props.fov != null && { fov: props.fov }),
+    animation: props.lively ? new IdleAnimation() : null,
   });
-  viewer.autoRotate = true;
+  viewer.autoRotate = props.lively;
   viewer.autoRotateSpeed = 0.5;
   viewer.controls.enableZoom = false;
+  if (props.fit && canvasEl.value.parentElement) {
+    resizeObserver = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      if (!(width > 0 && height > 0)) return;
+      // the figure is tall and narrow: the biggest 3:5 box that fits the place, never taller than on the site
+      const h = Math.min(height, width / FIT_RATIO, FIT_MAX_HEIGHT);
+      viewer.setSize(Math.max(1, Math.floor(h * FIT_RATIO)), Math.max(1, Math.floor(h)));
+    });
+    resizeObserver.observe(canvasEl.value.parentElement);
+  }
+  // ready also on a failed load: the viewer shows the default skin then, and the page must not wait for ever
+  viewer.loadSkin(props.url).then(() => emit('ready'), () => emit('ready'));
 });
 
 watch(
   () => props.url,
-  (url) => viewer?.loadSkin(url),
+  (url) => viewer?.loadSkin(url).then(() => emit('ready'), () => emit('ready')),
 );
 
-onBeforeUnmount(() => viewer?.dispose());
+onBeforeUnmount(() => {
+  resizeObserver?.disconnect();
+  viewer?.dispose();
+});
 </script>
 
 <template>

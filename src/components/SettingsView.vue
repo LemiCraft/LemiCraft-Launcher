@@ -361,7 +361,7 @@ onUnmounted(() => {
           <div class="row">
             <div class="row-text">
               <span class="row-title">Подключаться через</span>
-              <span class="row-sub">{{ routeHint }}</span>
+              <Transition name="sub" mode="out-in"><span :key="routeHint" class="row-sub">{{ routeHint }}</span></Transition>
             </div>
             <div class="dropdown-wrap" ref="routeWrapEl">
               <button class="dropdown-trigger" ref="routeTriggerEl" :tabindex="autoConnect ? 0 : -1" @click="routeMenuOpen = !routeMenuOpen">
@@ -419,7 +419,7 @@ onUnmounted(() => {
       <div class="row">
         <div class="row-text">
           <span class="row-title">Подбор подключения</span>
-          <span class="row-sub">{{ entrySummary }}</span>
+          <Transition name="sub" mode="out-in"><span :key="entrySummary" class="row-sub">{{ entrySummary }}</span></Transition>
         </div>
         <button class="browse-btn" @click="entryModalOpen = true">Подробнее</button>
       </div>
@@ -693,6 +693,27 @@ onUnmounted(() => {
 .row-sub {
   font-size: 12.5px;
   color: var(--text-muted);
+}
+
+/* a hint that changes with the choice fades into the new text */
+.sub-enter-active {
+  transition: opacity 0.24s ease, transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.sub-leave-active {
+  transition: opacity 0.12s ease;
+}
+.sub-enter-from {
+  opacity: 0;
+  transform: translateY(3px);
+}
+.sub-leave-to {
+  opacity: 0;
+}
+@media (prefers-reduced-motion: reduce) {
+  .sub-enter-active,
+  .sub-leave-active {
+    transition: none;
+  }
 }
 
 .ram-control {

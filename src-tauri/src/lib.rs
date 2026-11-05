@@ -9,6 +9,7 @@ mod mods;
 mod mrpack;
 mod news;
 mod entry_points;
+mod profile;
 mod provider_status;
 mod rules;
 #[cfg(not(windows))]
@@ -179,6 +180,8 @@ pub fn run() {
       mrpack::stage_mrpack,
       mrpack::preview_mrpack,
       mrpack::apply_mrpack,
+      profile::get_profile,
+      profile::get_cached_profile,
       entry_points::get_entry_routes,
       entry_points::probe_entry_points,
       entry_points::get_cached_entry_points,

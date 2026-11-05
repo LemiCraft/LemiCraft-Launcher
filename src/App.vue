@@ -8,12 +8,14 @@ import ModsView from './components/ModsView.vue';
 import LogsView from './components/LogsView.vue';
 import SettingsView from './components/SettingsView.vue';
 import RulesView from './components/RulesView.vue';
+import ProfileView from './components/ProfileView.vue';
 import ProgressToast from './components/ProgressToast.vue';
 import NotificationStack from './components/NotificationStack.vue';
 import UpdateModal from './components/UpdateModal.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import LoginOverlay from './components/LoginOverlay.vue';
-import { refreshAccount } from './store/account.js';
+import { accountStore, refreshAccount } from './store/account.js';
+import { clearProfile } from './store/profile.js';
 import { startInstallListeners } from './store/installProgress.js';
 import { skinsState, startElybyLoginListeners } from './store/skins.js';
 import { checkForUpdate } from './store/update.js';
@@ -34,6 +36,7 @@ const DISCORD_PAGE_LABELS = {
   mods: 'Управляет модами',
   rules: 'Читает правила',
   settings: 'В настройках',
+  profile: 'Смотрит профиль',
 };
 
 async function syncDiscordPage(page) {
@@ -44,6 +47,16 @@ async function syncDiscordPage(page) {
 watch(active, (page) => {
   if (!isLogsWindow.value) syncDiscordPage(page);
 });
+
+// The profile belongs to one account: a logout or another account drops it, and a guest has no profile page
+// (the account finishing its own loading is not a change: the page may be showing a profile by then)
+watch(
+  () => [accountStore.loggedIn, accountStore.uuid, accountStore.provider],
+  ([loggedIn, uuid, provider], [wasLoggedIn, wasUuid, wasProvider]) => {
+    if (wasLoggedIn && (!loggedIn || uuid !== wasUuid || provider !== wasProvider)) clearProfile();
+    if (!loggedIn && !accountStore.checking && active.value === 'profile') active.value = 'home';
+  },
+);
 
 // A lemicraft://import/<code> link switches to the mods page; ModsView picks up pendingImportCode itself
 watch(
@@ -99,6 +112,7 @@ onMounted(async () => {
             <ModsView v-else-if="active === 'mods'" key="mods" />
             <RulesView v-else-if="active === 'rules'" key="rules" />
             <SettingsView v-else-if="active === 'settings'" key="settings" />
+            <ProfileView v-else-if="active === 'profile'" key="profile" />
           </Transition>
         </main>
       </div>

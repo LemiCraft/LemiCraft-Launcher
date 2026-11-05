@@ -92,7 +92,7 @@ function activateQuickLink(link) {
 }
 
 function openPersonalAccount() {
-  openExternal('https://lemicraft.ru/profile');
+  emit('navigate', 'profile');
   menuOpen.value = false;
 }
 

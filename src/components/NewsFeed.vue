@@ -331,15 +331,17 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 16px 18px;
-  transition: border-color 0.15s ease, transform 0.15s ease;
+  transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.3s ease;
   animation: card-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 .news-card.clickable {
   cursor: pointer;
 }
+/* the card does not move: one that lifts away from the pointer's edge flickers; it brightens and glows instead */
 .news-card:hover {
   border-color: #423e46;
-  transform: translateY(-2px);
+  background: color-mix(in srgb, var(--card) 94%, white);
+  box-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.6);
 }
 
 @keyframes card-in {

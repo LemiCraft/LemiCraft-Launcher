@@ -346,14 +346,17 @@ h1 {
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 12px 24px -10px rgba(255, 95, 95, 0.55);
-  transition: background 0.15s ease, transform 0.1s ease;
+  /* it grows a little instead of moving up: a button that leaves the pointer at its lower edge flickers */
+  transition: background 0.25s ease, box-shadow 0.3s ease, transform 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
-.play-btn:hover {
+.play-btn:hover:not(:disabled) {
   background: var(--accent-hover);
-  transform: translateY(-1px);
+  box-shadow: 0 14px 28px -10px rgba(255, 95, 95, 0.7);
+  transform: scale(1.02);
 }
-.play-btn:active {
-  transform: translateY(0);
+.play-btn:active:not(:disabled) {
+  transform: scale(0.985);
+  transition-duration: 0.1s;
 }
 .play-btn:disabled {
   opacity: 0.75;

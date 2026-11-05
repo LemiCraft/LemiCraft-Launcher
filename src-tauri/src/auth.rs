@@ -646,6 +646,11 @@ fn load_current_account(fetch_skin_url: bool) -> Option<StoredAccount> {
     load_current_account_locked(fetch_skin_url, false)
 }
 
+// uuid and username of the signed-in account, without asking any service
+pub(crate) fn current_identity() -> Option<(String, String)> {
+    load_current_account(false).map(|a| (a.uuid().to_string(), a.username().to_string()))
+}
+
 // refresh now even if not expired (after a 401 from the site)
 pub(crate) fn force_refresh_current_session() -> Option<(String, String, String, String)> {
     let _guard = ACCOUNT_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
@@ -763,5 +768,6 @@ pub fn logout() -> Result<(), String> {
     fs::remove_file(account_path()).ok();
     fs::remove_file(legacy_account_path()).ok();
     crate::site_auth::clear();
+    crate::profile::clear_cache();
     Ok(())
 }
