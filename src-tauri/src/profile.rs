@@ -1,6 +1,5 @@
-// The player's profile page in the launcher: the same data as the profile on the site. The site's launcher
-// endpoint gives all of it for the signed-in account (the token says whose profile it is); while that
-// endpoint is not there, the public data of the player (roles, ban) is shown without statistics.
+// The player's profile from the site's launcher endpoint (the token says whose); without it, the public data
+// (roles, ban) is shown without statistics.
 use std::path::Path;
 use std::time::Duration;
 

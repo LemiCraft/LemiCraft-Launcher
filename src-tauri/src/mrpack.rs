@@ -1,6 +1,5 @@
-// Import of a Modrinth modpack (.mrpack): a zip with modrinth.index.json (the files to download, with hashes),
-// plus overrides/ and client-overrides/ folders. Everything is staged first and moved into place only when all
-// of it is downloaded and checked, so a failed import leaves nothing behind.
+// Import of a Modrinth modpack (.mrpack): modrinth.index.json lists the files to download, overrides/ come in the zip.
+// All of it is staged and checked before anything is moved into place, so a failed import leaves nothing behind.
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Write};

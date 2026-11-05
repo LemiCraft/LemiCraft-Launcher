@@ -451,10 +451,8 @@ async fn lookup_address(host: &str, port: u16) -> Option<SocketAddr> {
     None
 }
 
-/// Delays of the requests that came back, None for those that did not.
-/// The delay is the ping packet's round trip, which the proxy itself answers: what the server list in
-/// the game shows. The status reply is slower through a relay (it waits for the server behind it), so it
-/// only has to arrive, and the TCP handshake can be answered by a local VPN or proxy.
+/// Delays of the requests that came back, None for the lost ones: the ping round trip, as the game's server list
+/// shows it (the status reply is slower behind a relay, and a local VPN answers a TCP handshake itself).
 async fn sample(
     addr: SocketAddr,
     handshake_host: &str,

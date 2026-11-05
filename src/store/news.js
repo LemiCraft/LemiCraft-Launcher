@@ -51,9 +51,8 @@ function mapNewsItem(item) {
   };
 }
 
-// A fresh first page replaces only its own part of the list: the older cards that scrolling has loaded since stay,
-// otherwise coming back to the page would cut the feed down to the first cards (the site may return fewer
-// than asked for) and they would vanish one by one
+// A fresh first page replaces only its own part: the older cards loaded by scrolling stay (the site may return
+// fewer than asked for)
 export function mergeFirstPage(current, fresh) {
   const times = fresh.map((item) => Date.parse(item.rawDate)).filter(Number.isFinite);
   if (times.length === 0) return { items: fresh, keepsCursor: false };

@@ -118,10 +118,8 @@ const scale = ref(1);
 const natural = ref(0);
 let sizeObserver = null;
 
-// The width the page is laid out at grows as it shrinks, and a wider page can be shorter (the statistics take
-// fewer rows), which asks for a bigger scale again: left alone that flips for ever and the page twitches.
-// So the steps are counted per window size, a step back to where it was settles on the smaller scale,
-// and then it stays until the window (or the content) really changes.
+// Scaling changes the layout width and so the height, which can flip for ever: steps are counted per window
+// size and settle on the smaller scale.
 const MAX_STEPS = 5;
 let boxKey = '';
 let steps = [];

@@ -47,9 +47,8 @@ function openNews(item) {
   openItem.value = item;
 }
 
-// The next page is requested on scrolling. When the loaded cards do not fill the window there is nothing to
-// scroll, so no page would ever follow: look again after every change of the list until it fills the window
-// or the news end (the site can return fewer cards than asked for while more are still to come)
+// The next page is asked for on scrolling; cards that do not fill the window leave nothing to scroll, so look
+// again after every change of the list
 watch(
   () => [newsState.items.length, newsState.hasMore],
   async () => {
@@ -58,10 +57,8 @@ watch(
   },
 );
 
-// Also looks once the list is there: coming back to the page shows the news that are already loaded, and
-// nothing changes in them that would make the watcher above look again
-// While the page stays open the site is asked again now and then: what is new slides in at the top, what was
-// shown stays (and a failed check is silent, the list on screen is still good)
+// Also on mount: a list that is already loaded would not trigger the watcher above
+// Asked again every few minutes while open: a new post slides in at the top, a failed check is silent
 const CHECK_EVERY_MS = 5 * 60 * 1000;
 let checkTimer = 0;
 
