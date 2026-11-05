@@ -621,16 +621,16 @@ pub async fn apply_official_pack(app: AppHandle, download_url: String, version: 
 
 // A code's zip has no file->id mapping, so like OfficialPackState it's tracked and removed as one unit
 #[derive(Serialize, Deserialize, Clone, Default)]
-struct ImportBundleState {
-    files: Vec<String>,
-    mod_ids: Vec<String>,
+pub(crate) struct ImportBundleState {
+    pub(crate) files: Vec<String>,
+    pub(crate) mod_ids: Vec<String>,
 }
 
 fn import_bundle_state_path() -> PathBuf {
     game_dir().join("import_bundle_state.json")
 }
 
-fn load_import_bundle_state() -> Option<ImportBundleState> {
+pub(crate) fn load_import_bundle_state() -> Option<ImportBundleState> {
     let state: ImportBundleState =
         std::fs::read_to_string(import_bundle_state_path()).ok().and_then(|json| serde_json::from_str(&json).ok())?;
     // Plain relative paths only: joining an absolute or ".." entry before remove_file would escape minecraft_dir
@@ -652,7 +652,7 @@ fn load_import_bundle_state() -> Option<ImportBundleState> {
     Some(state)
 }
 
-fn save_import_bundle_state(state: &ImportBundleState) -> Result<(), String> {
+pub(crate) fn save_import_bundle_state(state: &ImportBundleState) -> Result<(), String> {
     let json = serde_json::to_string_pretty(state).map_err(|err| err.to_string())?;
     std::fs::create_dir_all(game_dir()).map_err(|err| err.to_string())?;
     std::fs::write(import_bundle_state_path(), json).map_err(|err| err.to_string())

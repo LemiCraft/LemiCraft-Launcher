@@ -6,6 +6,7 @@ mod discord_rpc;
 mod dpapi;
 mod game;
 mod mods;
+mod mrpack;
 mod news;
 mod entry_points;
 mod provider_status;
@@ -175,6 +176,9 @@ pub fn run() {
       auth::logout,
       server_status::get_server_status,
       server_status::get_cached_server_status,
+      mrpack::stage_mrpack,
+      mrpack::preview_mrpack,
+      mrpack::apply_mrpack,
       entry_points::probe_entry_points,
       entry_points::get_cached_entry_points,
       settings::get_settings,

@@ -10,11 +10,15 @@ export const accountStore = reactive({
   loggedIn: false,
   // true while the head of a signed-in account is still being fetched
   skinLoading: false,
+  // true from the start until the first answer about the account: until then the launcher does not know
+  // whether there is one, and must not look like a guest
+  checking: typeof window !== 'undefined' && !!window.__TAURI_INTERNALS__,
 });
 
 // `info` is what the backend reports as the current account (AccountInfo), or null for a guest
 export async function applyAccount(info) {
   const revision = ++accountRevision;
+  accountStore.checking = false;
   if (info) {
     // keep the shown head on a plain refresh, so it does not blink
     const sameAccount = accountStore.uuid === info.uuid && accountStore.provider === info.provider;
@@ -85,6 +89,11 @@ async function loadActiveSkin(info, revision) {
 
 export async function refreshAccount() {
   if (!window.__TAURI_INTERNALS__) return;
-  const { invoke } = await import('@tauri-apps/api/core');
-  await applyAccount(await invoke('get_current_account'));
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await applyAccount(await invoke('get_current_account'));
+  } finally {
+    // also when the answer failed: a launcher that cannot tell must not stay "checking" for ever
+    accountStore.checking = false;
+  }
 }

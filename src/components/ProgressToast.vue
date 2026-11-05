@@ -11,7 +11,7 @@ import { progressToastState, hideProgress } from '../store/progressToast.js';
       </svg>
 
       <div class="toast-body">
-        <p class="toast-text">{{ progressToastState.text }}</p>
+        <p class="toast-text" :title="progressToastState.text">{{ progressToastState.text }}</p>
         <div v-if="!progressToastState.error" class="track">
           <div
             class="fill"
@@ -88,9 +88,16 @@ import { progressToastState, hideProgress } from '../store/progressToast.js';
   gap: 6px;
 }
 
+/* progress lines carry file names: one line, cut with an ellipsis; only an error may need the room */
 .toast-text {
   font-size: 13px;
   color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.toast.error .toast-text {
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 

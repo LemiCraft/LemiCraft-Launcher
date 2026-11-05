@@ -249,13 +249,14 @@ const quickLinks = [
           <div v-else class="guest-login">
             <div class="guest-heading">
               <div class="profile-details">
-                <span class="profile-name">Гость</span>
-                <span class="profile-provider">Войдите в аккаунт</span>
+                <span class="profile-name">{{ accountStore.checking ? 'Проверяю аккаунт' : 'Гость' }}</span>
+                <span class="profile-provider">{{ accountStore.checking ? 'Подождите секунду' : 'Войдите в аккаунт' }}</span>
               </div>
-              <div class="profile-avatar guest-avatar" v-html="tintIcon(ghostIcon)"></div>
+              <div v-if="accountStore.checking" class="profile-avatar skeleton"></div>
+              <div v-else class="profile-avatar guest-avatar" v-html="tintIcon(ghostIcon)"></div>
             </div>
-            <button class="menu-account-link guest-login-button" @click="openLoginChoice">
-              Войти
+            <button class="menu-account-link guest-login-button" :disabled="accountStore.checking" @click="openLoginChoice">
+              {{ accountStore.checking ? 'Проверяю...' : 'Войти' }}
             </button>
           </div>
 
@@ -316,7 +317,8 @@ const quickLinks = [
         <!-- the old and the new picture and text sit in the same place while they cross-fade, so nothing around them moves -->
         <div class="account-avatar-slot">
           <Transition name="account-fade">
-            <SkinFace v-if="accountStore.loggedIn && accountStore.skinUrl" :key="accountStore.skinUrl" class="account-layer" :url="accountStore.skinUrl" :size="32" :radius="9" />
+            <div v-if="accountStore.checking" key="checking" class="avatar skeleton account-layer"></div>
+            <SkinFace v-else-if="accountStore.loggedIn && accountStore.skinUrl" :key="accountStore.skinUrl" class="account-layer" :url="accountStore.skinUrl" :size="32" :radius="9" />
             <div v-else-if="accountStore.loggedIn && accountStore.skinLoading" key="skeleton" class="avatar skeleton account-layer"></div>
             <div v-else-if="!accountStore.loggedIn" key="guest" class="avatar guest-avatar account-layer" v-html="tintIcon(ghostIcon)"></div>
             <div v-else key="letter" class="avatar account-layer">
@@ -327,12 +329,14 @@ const quickLinks = [
         <div class="account-info">
           <span class="account-text-slot">
             <Transition name="account-fade">
-              <span :key="displayName" class="account-name">{{ displayName }}</span>
+              <span v-if="accountStore.checking" key="checking" class="account-name text-bone"></span>
+              <span v-else :key="displayName" class="account-name">{{ displayName }}</span>
             </Transition>
           </span>
           <span class="account-text-slot">
             <Transition name="account-fade">
-              <span :key="displayRank" class="account-rank">{{ displayRank }}</span>
+              <span v-if="accountStore.checking" key="checking" class="account-rank text-bone short"></span>
+              <span v-else :key="displayRank" class="account-rank">{{ displayRank }}</span>
             </Transition>
           </span>
         </div>
@@ -599,6 +603,19 @@ const quickLinks = [
 .account-text-slot > * {
   grid-area: 1 / 1;
   min-width: 0;
+}
+.text-bone {
+  display: block;
+  width: 92px;
+  height: 14px;
+  margin: 1px 0;
+  border-radius: 6px;
+  background: var(--surface-2);
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+.text-bone.short {
+  width: 58px;
+  height: 12px;
 }
 .account-fade-enter-active,
 .account-fade-leave-active {

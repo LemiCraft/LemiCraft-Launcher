@@ -246,7 +246,7 @@ async function onConfirmElybyLogin() {
     <div class="head">
       <div>
         <h1>Скины</h1>
-        <p class="sub">{{ accountStore.loggedIn ? `Ваши скины · ${accountStore.provider}` : 'Войдите в аккаунт, чтобы управлять скинами' }}</p>
+        <p class="sub">{{ accountStore.loggedIn ? `Ваши скины · ${accountStore.provider}` : accountStore.checking ? 'Проверяю аккаунт...' : 'Войдите в аккаунт, чтобы управлять скинами' }}</p>
       </div>
       <div v-if="accountStore.loggedIn && !needsElybyLogin" class="head-actions">
         <button class="refresh" :disabled="refreshing || skinsState.loading" @click="onRefresh">
@@ -265,7 +265,7 @@ async function onConfirmElybyLogin() {
     <div class="skins-scroll edge-fade" :class="{ 'edge-top': topFaded, 'edge-bottom': bottomFaded }" ref="scrollEl" @scroll="onScroll">
     <Transition name="swap" mode="out-in" @after-enter="onScroll">
     <div v-if="!accountStore.loggedIn" key="guest" class="empty-state">
-      <p>Войдите в аккаунт, чтобы увидеть свои скины</p>
+      <p>{{ accountStore.checking ? 'Проверяю аккаунт...' : 'Войдите в аккаунт, чтобы увидеть свои скины' }}</p>
     </div>
 
     <div v-else-if="needsElybyLogin" key="gate" class="elyby-gate">

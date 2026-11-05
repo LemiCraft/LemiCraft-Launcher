@@ -10,6 +10,9 @@ import {
   uninstallModId,
   previewImportCode,
   applyImportCode,
+  previewMrpack,
+  applyMrpack,
+  stageMrpack,
   uninstallImportBundle,
   loadInstalledImportBundle,
   isPackOnly,
@@ -180,6 +183,79 @@ async function onApplyImport() {
   }
 }
 
+const mrpackPath = ref('');
+const mrpackPreview = ref(null);
+const mrpackChecking = ref(false);
+const mrpackError = ref('');
+
+async function showMrpack(getPath) {
+  mrpackChecking.value = true;
+  mrpackError.value = '';
+  mrpackPreview.value = null;
+  try {
+    mrpackPath.value = await getPath();
+    mrpackPreview.value = await previewMrpack(mrpackPath.value);
+  } catch (err) {
+    mrpackError.value = String(err);
+  } finally {
+    mrpackChecking.value = false;
+  }
+}
+
+async function onPickMrpack() {
+  if (!window.__TAURI_INTERNALS__ || mrpackChecking.value) return;
+  const { open } = await import('@tauri-apps/plugin-dialog');
+  const picked = await open({ multiple: false, filters: [{ name: 'Набор Modrinth', extensions: ['mrpack'] }] });
+  if (typeof picked !== 'string') return;
+  await showMrpack(async () => picked);
+}
+
+// A pack dragged onto the page: the window's own file drop is off (the skins page uses the page's), so the file
+// comes as a File and is handed to the backend as bytes
+const dropActive = ref(false);
+let dragDepth = 0;
+
+function carriesFiles(event) {
+  return Array.from(event.dataTransfer?.types ?? []).includes('Files');
+}
+
+function onDragEnter(event) {
+  if (!carriesFiles(event)) return;
+  dragDepth++;
+  dropActive.value = true;
+}
+
+function onDragLeave() {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) dropActive.value = false;
+}
+
+async function onDropPack(event) {
+  dragDepth = 0;
+  dropActive.value = false;
+  const file = event.dataTransfer?.files?.[0];
+  if (!file || !window.__TAURI_INTERNALS__ || mrpackChecking.value || modsState.applying) return;
+  if (!file.name.toLowerCase().endsWith('.mrpack')) {
+    pushNotification('Нужен файл набора Modrinth (.mrpack)', 'error');
+    return;
+  }
+  await showMrpack(() => stageMrpack(file));
+}
+
+async function onApplyMrpack() {
+  if (!mrpackPreview.value || mrpackPreview.value.incompatible || modsState.applying) return;
+  try {
+    const outcome = await applyMrpack(mrpackPath.value);
+    if (!outcome) return;
+    const already = outcome.already_installed.length;
+    pushNotification(already ? `Набор установлен: модов ${outcome.mods}, уже были ${already}` : `Набор установлен: модов ${outcome.mods}`);
+    mrpackPreview.value = null;
+    mrpackPath.value = '';
+  } catch (err) {
+    pushNotification(String(err), 'error');
+  }
+}
+
 async function onRemoveImportBundle() {
   try {
     if (window.__TAURI_INTERNALS__) {
@@ -224,7 +300,16 @@ watch(
 </script>
 
 <template>
-  <div class="mods">
+  <div class="mods" @dragenter.prevent="onDragEnter" @dragover.prevent @dragleave="onDragLeave" @drop.prevent="onDropPack">
+    <Transition name="drop">
+      <div v-if="dropActive" class="drop-overlay">
+        <div class="drop-card">
+          <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V4m0 0L8 8m4-4 4 4M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" /></svg>
+          <span class="drop-title">Отпустите файл</span>
+          <span class="drop-sub">Набор Modrinth (.mrpack) будет проверен перед установкой</span>
+        </div>
+      </div>
+    </Transition>
     <div class="head">
       <div>
         <h1>Моды</h1>
@@ -289,6 +374,36 @@ watch(
           <div v-if="modsState.installedImportModIds.length && !importPreview" class="import-installed-row">
             <span>Установлен набор из {{ modsState.installedImportModIds.length }} модов</span>
             <button class="pack-remove-btn" :disabled="modsState.applying" @click="onRemoveImportBundle">Удалить</button>
+          </div>
+          <div class="mrpack-row">
+            <span class="mrpack-label">Набор Modrinth (.mrpack)</span>
+            <button class="secondary-btn" :disabled="mrpackChecking || modsState.applying" @click="onPickMrpack">
+              {{ mrpackChecking ? 'Проверяю...' : 'Выбрать файл' }}
+            </button>
+          </div>
+          <p v-if="mrpackError" class="error-text">{{ mrpackError }}</p>
+          <div class="import-preview-wrap" :class="{ expanded: !!mrpackPreview }">
+            <div class="import-preview-inner">
+              <div v-if="mrpackPreview" class="mrpack-preview">
+                <div class="mrpack-title">{{ mrpackPreview.name }}<span v-if="mrpackPreview.version" class="mrpack-version">{{ mrpackPreview.version }}</span></div>
+                <p v-if="mrpackPreview.summary" class="mrpack-summary">{{ mrpackPreview.summary }}</p>
+                <p v-if="mrpackPreview.incompatible" class="error-text">{{ mrpackPreview.incompatible }}</p>
+                <div class="import-preview">
+                  <span class="import-chip">Модов: {{ mrpackPreview.mods }}</span>
+                  <span v-if="mrpackPreview.resourcepacks" class="import-chip">Ресурспаков: {{ mrpackPreview.resourcepacks }}</span>
+                  <span v-if="mrpackPreview.shaderpacks" class="import-chip">Шейдеров: {{ mrpackPreview.shaderpacks }}</span>
+                  <span v-if="mrpackPreview.overrides" class="import-chip configs-chip">+ настройки и файлы: {{ mrpackPreview.overrides }}</span>
+                  <span class="import-chip">{{ formatFileSize(mrpackPreview.total_size) }}</span>
+                  <button class="pick-btn" :disabled="modsState.applying || !!mrpackPreview.incompatible || mrpackPreview.mods + mrpackPreview.resourcepacks + mrpackPreview.shaderpacks + mrpackPreview.overrides === 0" @click="onApplyMrpack">
+                    {{ mrpackPreview.replaces_import ? 'Заменить набор' : 'Установить набор' }}
+                  </button>
+                </div>
+                <p v-if="mrpackPreview.replaces_import" class="mrpack-note">Установленный набор будет заменён этим. Уже стоящие моды (в том числе из LemiSborka) и ваши настройки не затрагиваются</p>
+                <p v-else class="mrpack-note">Уже стоящие моды (в том числе из LemiSborka) и ваши настройки не затрагиваются</p>
+                <p v-if="mrpackPreview.client_unsupported" class="mrpack-note">Пропущено модов только для сервера: {{ mrpackPreview.client_unsupported }}</p>
+                <p v-if="mrpackPreview.rejected.length" class="mrpack-note">Не будет установлено (недопустимый путь или источник): {{ mrpackPreview.rejected.length }}</p>
+              </div>
+            </div>
           </div>
           <div class="import-preview-wrap" :class="{ expanded: !!importPreview }">
             <div class="import-preview-inner">
@@ -359,6 +474,45 @@ watch(
   gap: 20px;
   height: 100%;
   min-height: 0;
+}
+
+.drop-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 7, 9, 0.72);
+  pointer-events: none;
+}
+.drop-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 34px 54px;
+  border: 2px dashed var(--accent);
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--accent);
+}
+.drop-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+}
+.drop-sub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.drop-enter-active,
+.drop-leave-active {
+  transition: opacity 0.18s ease;
+}
+.drop-enter-from,
+.drop-leave-to {
+  opacity: 0;
 }
 
 .mods-scroll-wrap {
@@ -665,6 +819,46 @@ watch(
 
 .import-preview .pick-btn {
   margin-left: auto;
+}
+
+.mrpack-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.mrpack-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.mrpack-preview {
+  margin-top: 12px;
+}
+.mrpack-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.mrpack-version {
+  margin-left: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-faint);
+}
+.mrpack-summary {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.mrpack-note {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-faint);
 }
 
 .pick-btn {

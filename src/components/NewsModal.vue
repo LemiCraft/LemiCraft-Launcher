@@ -15,7 +15,10 @@ const bottomFaded = ref(false);
 function onScroll() {
   const el = scrollEl.value;
   if (!el) return;
-  topFaded.value = el.scrollTop > 4;
+  // The top fade is for text that scrolls away under the edge. Over the cover picture it showed as a pale band,
+  // so it waits until the picture has scrolled out
+  const cover = el.querySelector('.cover');
+  topFaded.value = el.scrollTop > (cover ? cover.offsetHeight - 8 : 4);
   bottomFaded.value = el.scrollTop + el.clientHeight < el.scrollHeight - 4;
 }
 onMounted(() => nextTick(onScroll));
@@ -170,7 +173,8 @@ async function openExternal(target) {
   position: absolute;
   left: 1px;
   right: 1px;
-  height: 16px;
+  /* tall enough that a line cut by the edge is gone before the edge, not sliced through its letters */
+  height: 34px;
   pointer-events: none;
   opacity: 0;
   transition: opacity 0.2s ease;

@@ -213,6 +213,33 @@ export async function applyImportCode(code, ids) {
   }
 }
 
+// A pack dropped on the window: its bytes go to the backend, which keeps them as a file and returns the path
+export async function stageMrpack(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  return withInvoke((invoke) => invoke('stage_mrpack', bytes));
+}
+
+// A Modrinth pack (.mrpack) from a file: the preview says what it holds and whether it fits the game
+export async function previewMrpack(path) {
+  return withInvoke((invoke) => invoke('preview_mrpack', { path }));
+}
+
+// Installed and removed like a code's set (one set at a time), so it shares the import bundle state
+export async function applyMrpack(path) {
+  if (modsState.applying) return null;
+  modsState.applying = true;
+  showProgress('Готовлю набор...');
+  try {
+    const outcome = await withInvoke((invoke) => invoke('apply_mrpack', { path }));
+    modsState.installedImportModIds = outcome?.mod_ids ?? [];
+    await refreshInstalledMods();
+    return outcome;
+  } finally {
+    modsState.applying = false;
+    hideProgress();
+  }
+}
+
 export async function uninstallImportBundle() {
   if (modsState.applying) return;
   modsState.applying = true;

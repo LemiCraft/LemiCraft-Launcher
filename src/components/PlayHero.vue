@@ -108,7 +108,7 @@ onUnmounted(() => {
         class="play-btn"
         :class="{ running: installState.isGameRunning }"
         :disabled="installState.isInstalling || installState.isGameRunning || modsState.applying || !accountStore.loggedIn"
-        :title="modsState.applying ? 'Дождитесь завершения установки модов' : !accountStore.loggedIn ? 'Сначала войдите в аккаунт' : ''"
+        :title="modsState.applying ? 'Дождитесь завершения установки модов' : accountStore.checking ? 'Проверяю аккаунт' : !accountStore.loggedIn ? 'Сначала войдите в аккаунт' : ''"
         @click="launchGame"
       >
         <svg v-if="!installState.isInstalling && !installState.isGameRunning" viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7Z" /></svg>
@@ -121,7 +121,9 @@ onUnmounted(() => {
               ? 'Игра запущена'
               : modsState.applying
                 ? 'Применяются моды...'
-                : !accountStore.loggedIn
+                : accountStore.checking
+                  ? 'Проверяю аккаунт...'
+                  : !accountStore.loggedIn
                   ? 'Нужен вход в аккаунт'
                   : installState.isInstalled === false
                     ? 'Установить и играть'
