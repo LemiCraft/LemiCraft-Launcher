@@ -79,6 +79,10 @@ onBeforeUnmount(() => roomQuery?.removeEventListener('change', onRoomChange));
 // the figure fades in over its placeholder once the skin is on the model
 const skinLoaded = ref(false);
 watch(() => accountStore.skinUrl, () => { skinLoaded.value = false; });
+// a viewer that comes back with the panel starts from the default skin again
+watch(() => roomForSkin.value, (room) => { if (room) skinLoaded.value = false; });
+// another account while the page is open (the App clears the old profile): load the new one
+watch(() => accountStore.uuid, (uuid) => { if (uuid) loadProfile({ force: true }); });
 
 // the button itself answers a copy: the icon turns into a tick for a moment
 const copied = ref(false);
@@ -255,7 +259,7 @@ onBeforeUnmount(() => {
                     class="role rise"
                     :style="{ background: roleBackground(role.colors), color: roleTextColor(role.colors), '--i': i + 2 }"
                   >
-                    <img v-if="role.emoji" class="role-emoji" :src="`${SITE}/api/emoji/${role.emoji}.svg`" alt="" />
+                    <img v-if="role.emoji" class="role-emoji" :src="`${SITE}/api/emoji/${encodeURIComponent(role.emoji)}.svg`" alt="" />
                     {{ role.name }}
                   </span>
                   <span v-if="!profile.roles.length" class="muted">Ролей пока нет</span>

@@ -214,7 +214,11 @@ export async function applyImportCode(code, ids) {
 }
 
 // A pack dropped on the window: its bytes go to the backend, which keeps them as a file and returns the path
+// the same limit as the backend's MAX_DROPPED_PACK_BYTES
+const MAX_DROPPED_PACK_BYTES = 600 * 1024 * 1024;
+
 export async function stageMrpack(file) {
+  if (file.size > MAX_DROPPED_PACK_BYTES) throw 'Файл слишком большой для набора';
   const bytes = new Uint8Array(await file.arrayBuffer());
   return withInvoke((invoke) => invoke('stage_mrpack', bytes));
 }

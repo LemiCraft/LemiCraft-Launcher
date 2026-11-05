@@ -204,7 +204,7 @@ onMounted(async () => {
   autoConnect.value = settings.auto_connect;
   autoConnectRoute.value = settings.auto_connect_route ?? 'direct';
   routeSettled.value = settings.auto_connect;
-  invoke('get_entry_routes').then((list) => (routes.value = list ?? []));
+  invoke('get_entry_routes').then((list) => (routes.value = list ?? []), (err) => console.error('failed to read the routes:', err));
   showLogs.value = settings.show_logs;
   crashAnalyzer.value = settings.crash_analyzer;
   discordRpc.value = settings.discord_rpc;

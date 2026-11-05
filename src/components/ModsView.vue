@@ -204,8 +204,14 @@ async function showMrpack(getPath) {
 
 async function onPickMrpack() {
   if (!window.__TAURI_INTERNALS__ || mrpackChecking.value) return;
-  const { open } = await import('@tauri-apps/plugin-dialog');
-  const picked = await open({ multiple: false, filters: [{ name: 'Набор Modrinth', extensions: ['mrpack'] }] });
+  let picked;
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    picked = await open({ multiple: false, filters: [{ name: 'Набор Modrinth', extensions: ['mrpack'] }] });
+  } catch (err) {
+    console.error('failed to open the file dialog:', err);
+    return;
+  }
   if (typeof picked !== 'string') return;
   await showMrpack(async () => picked);
 }

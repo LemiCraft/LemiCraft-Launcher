@@ -66,7 +66,15 @@ watch(
   },
 );
 
+// The window's own file drop is off, so a file let go outside a drop area would be opened by the web view
+// and replace the page of the app
+function keepFilesOut(event) {
+  if (event.dataTransfer?.types?.includes('Files')) event.preventDefault();
+}
+
 onMounted(async () => {
+  window.addEventListener('dragover', keepFilesOut);
+  window.addEventListener('drop', keepFilesOut);
   if (window.__TAURI_INTERNALS__) {
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     isLogsWindow.value = getCurrentWindow().label === 'logs';

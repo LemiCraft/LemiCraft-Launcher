@@ -16,10 +16,15 @@ let listening = false;
 async function listenProgress() {
   if (listening) return;
   listening = true;
-  const { listen } = await import('@tauri-apps/api/event');
-  await listen('entry-probe-progress', (event) => {
-    entryPoints.progress = event.payload;
-  });
+  try {
+    const { listen } = await import('@tauri-apps/api/event');
+    await listen('entry-probe-progress', (event) => {
+      entryPoints.progress = event.payload;
+    });
+  } catch (err) {
+    listening = false;
+    console.error('failed to listen to the entry probe progress:', err);
+  }
 }
 
 // `mode` is 'quick' or 'deep'
@@ -43,7 +48,11 @@ export async function runEntryProbe(mode = 'quick') {
 export async function loadCachedEntryPoints() {
   if (!window.__TAURI_INTERNALS__ || entryPoints.probe) return;
   const { invoke } = await import('@tauri-apps/api/core');
-  entryPoints.probe = await invoke('get_cached_entry_points');
+  try {
+    entryPoints.probe = await invoke('get_cached_entry_points');
+  } catch (err) {
+    console.error('failed to read the last entry check:', err);
+  }
 }
 
 // Shows the last result right away, and checks again when it is old

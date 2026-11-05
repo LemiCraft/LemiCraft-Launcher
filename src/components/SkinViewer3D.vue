@@ -22,6 +22,17 @@ const FIT_MAX_HEIGHT = 400;
 const canvasEl = ref(null);
 let viewer = null;
 let resizeObserver = null;
+let loadToken = 0;
+let disposed = false;
+
+// A slow load of an old skin must not paint over a newer one, nor run on a viewer that is gone
+function loadSkinOf(url) {
+  const token = ++loadToken;
+  viewer.loadSkin(url).then(
+    () => { if (token === loadToken && !disposed) emit('ready'); },
+    () => { if (token === loadToken && !disposed) emit('ready'); },
+  );
+}
 
 onMounted(() => {
   viewer = new SkinViewer({
@@ -46,17 +57,20 @@ onMounted(() => {
     resizeObserver.observe(canvasEl.value.parentElement);
   }
   // ready also on a failed load: the viewer shows the default skin then, and the page must not wait for ever
-  viewer.loadSkin(props.url).then(() => emit('ready'), () => emit('ready'));
+  loadSkinOf(props.url);
 });
 
 watch(
   () => props.url,
-  (url) => viewer?.loadSkin(url).then(() => emit('ready'), () => emit('ready')),
+  (url) => viewer && loadSkinOf(url),
 );
 
 onBeforeUnmount(() => {
+  disposed = true;
   resizeObserver?.disconnect();
   viewer?.dispose();
+  // dispose() leaves the WebGL context to the garbage collector, and a browser keeps only about sixteen
+  viewer?.renderer?.forceContextLoss?.();
 });
 </script>
 

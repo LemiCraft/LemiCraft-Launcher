@@ -76,7 +76,8 @@ export function roleTextColor(colors) {
 }
 
 export function roleBackground(colors) {
-  const list = (colors ?? []).filter(Boolean);
+  // what the site sends goes into CSS, so only plain hex colours pass
+  const list = (colors ?? []).filter((c) => /^#[0-9a-f]{6}$/i.test(c ?? ''));
   if (!list.length) return 'var(--surface-2)';
   return list.length === 1 ? list[0] : `linear-gradient(90deg, ${list[0]}, ${list[1]})`;
 }

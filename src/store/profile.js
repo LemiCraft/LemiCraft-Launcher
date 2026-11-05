@@ -14,6 +14,8 @@ let request = 0;
 // Shows the cached profile at once, then asks the site; `force` asks even when the data is recent
 export async function loadProfile({ force = false } = {}) {
   if (!window.__TAURI_INTERNALS__) return;
+  // checked before the request counter moves: a call that does nothing must not cancel one that is running
+  if (!force && profileState.profile && Date.now() - lastLoadedAt < REFRESH_AFTER_MS) return;
   const { invoke } = await import('@tauri-apps/api/core');
   const mine = ++request;
 
