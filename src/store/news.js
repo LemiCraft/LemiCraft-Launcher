@@ -51,6 +51,18 @@ function mapNewsItem(item) {
   };
 }
 
+// A fresh first page replaces only its own part of the list: the older cards that scrolling has loaded since stay,
+// otherwise coming back to the page would cut the feed down to the first cards (the site may return fewer
+// than asked for) and they would vanish one by one
+export function mergeFirstPage(current, fresh) {
+  const times = fresh.map((item) => Date.parse(item.rawDate)).filter(Number.isFinite);
+  if (times.length === 0) return { items: fresh, keepsCursor: false };
+  const oldest = Math.min(...times);
+  const known = new Set(fresh.map((item) => item.id));
+  const tail = current.filter((item) => !known.has(item.id) && Date.parse(item.rawDate) < oldest);
+  return tail.length ? { items: [...fresh, ...tail], keepsCursor: true } : { items: fresh, keepsCursor: false };
+}
+
 export async function fetchNews({ force = false } = {}) {
   if (!window.__TAURI_INTERNALS__) {
     newsState.loaded = true;
@@ -79,9 +91,13 @@ export async function fetchNews({ force = false } = {}) {
   try {
     const page = await invoke('get_news');
     if (myGeneration !== requestGeneration) return;
-    newsState.items = page.items.map(mapNewsItem);
-    newsState.hasMore = page.hasMore;
-    newsState.lastId = page.lastId;
+    const merged = mergeFirstPage(newsState.items, page.items.map(mapNewsItem));
+    newsState.items = merged.items;
+    // with the older cards kept, the cursor of the page after them stays where it was
+    if (!merged.keepsCursor) {
+      newsState.hasMore = page.hasMore;
+      newsState.lastId = page.lastId;
+    }
     newsState.moreFailed = false;
     newsState.error = false;
     lastFetchedAt = Date.now();

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import NewsModal from './NewsModal.vue';
 import { parseInline, previewText, replaceDiscordTimestamps, shortDisplayTitle } from '../utils/newsMarkdown.js';
 import { newsState, fetchNews, loadMoreNews, retryLoadMoreNews } from '../store/news.js';
@@ -60,11 +60,21 @@ watch(
 
 // Also looks once the list is there: coming back to the page shows the news that are already loaded, and
 // nothing changes in them that would make the watcher above look again
+// While the page stays open the site is asked again now and then: what is new slides in at the top, what was
+// shown stays (and a failed check is silent, the list on screen is still good)
+const CHECK_EVERY_MS = 5 * 60 * 1000;
+let checkTimer = 0;
+
 onMounted(async () => {
+  checkTimer = setInterval(() => {
+    if (!document.hidden) fetchNews();
+  }, CHECK_EVERY_MS);
   await fetchNews();
   await nextTick();
   onScroll();
 });
+
+onBeforeUnmount(() => clearInterval(checkTimer));
 </script>
 
 <template>
@@ -331,17 +341,26 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: 16px 18px;
-  transition: border-color 0.25s ease, background 0.25s ease, box-shadow 0.3s ease;
+  position: relative;
+  transition: border-color 0.3s ease, box-shadow 0.35s ease, transform 0.35s cubic-bezier(0.2, 0.7, 0.2, 1);
   animation: card-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards;
 }
 .news-card.clickable {
   cursor: pointer;
 }
-/* the card does not move: one that lifts away from the pointer's edge flickers; it brightens and glows instead */
+/* the strip under the card is part of it, so the card that lifted off the pointer's edge is still hovered */
+.news-card::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -4px;
+  height: 4px;
+}
 .news-card:hover {
   border-color: #423e46;
-  background: color-mix(in srgb, var(--card) 94%, white);
   box-shadow: 0 10px 26px -14px rgba(0, 0, 0, 0.6);
+  transform: translateY(-2px);
 }
 
 @keyframes card-in {
