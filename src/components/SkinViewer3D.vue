@@ -69,8 +69,10 @@ onBeforeUnmount(() => {
   disposed = true;
   resizeObserver?.disconnect();
   viewer?.dispose();
-  // dispose() leaves the WebGL context to the garbage collector, and a browser keeps only about sixteen
-  viewer?.renderer?.forceContextLoss?.();
+  // dispose() leaves the WebGL context to the garbage collector, and a browser keeps only about sixteen. It is let
+  // go after the page has faded out: a canvas that loses its context turns into a grey box with a sad face.
+  const renderer = viewer?.renderer;
+  setTimeout(() => renderer?.forceContextLoss?.(), 1500);
 });
 </script>
 

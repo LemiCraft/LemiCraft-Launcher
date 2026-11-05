@@ -621,6 +621,16 @@ const quickLinks = [
 .account-fade-leave-active {
   transition: opacity 0.25s ease;
 }
+/* The skeleton pulses by an animation, which would keep its opacity from the fade and leave it hazy over the
+   name: it stops pulsing and goes under the one that comes in */
+.account-fade-leave-active {
+  animation: none;
+  z-index: 0;
+}
+.account-fade-enter-active {
+  position: relative;
+  z-index: 1;
+}
 .account-fade-enter-from,
 .account-fade-leave-to {
   opacity: 0;
