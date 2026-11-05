@@ -33,7 +33,7 @@ const HISTORY_MAX_AGE_SECS: u64 = 24 * 60 * 60;
 // three quick checks' worth of answers: less than that is a first impression, not a basis for advice
 const MIN_SAMPLES_FOR_ADVICE: u32 = 18;
 
-// every 10 % of lost requests costs as much as this many ms of delay
+// losing every request would cost this many ms of delay, every 10 % of them a tenth of it
 const LOSS_COST_MS: f64 = 1000.0;
 const JITTER_WEIGHT: f64 = 2.0;
 // how much of the way from the usual delay to the slow tail counts
@@ -557,7 +557,7 @@ const AUTO_ROUTE_MAX_AGE_SECS: u64 = 3 * 24 * 60 * 60;
 /// is recent, the direct way otherwise; an unknown route is the direct way too.
 fn host_for_route(route: &str, last: Option<&Probe>, now: u64) -> &'static str {
     let id = if route == "auto" {
-        last.filter(|probe| probe.checked_at + AUTO_ROUTE_MAX_AGE_SECS >= now).and_then(|probe| probe.suggestion.as_deref()).unwrap_or(DIRECT_ID)
+        last.filter(|probe| probe.checked_at.saturating_add(AUTO_ROUTE_MAX_AGE_SECS) >= now).and_then(|probe| probe.suggestion.as_deref()).unwrap_or(DIRECT_ID)
     } else {
         route
     };
@@ -601,7 +601,7 @@ fn save_store(store: &Store) {
 }
 
 fn trim_history(runs: &mut Vec<RunSummary>, now: u64) {
-    runs.retain(|r| r.at + HISTORY_MAX_AGE_SECS >= now);
+    runs.retain(|r| r.at.saturating_add(HISTORY_MAX_AGE_SECS) >= now);
     if runs.len() > HISTORY_RUNS {
         runs.drain(..runs.len() - HISTORY_RUNS);
     }

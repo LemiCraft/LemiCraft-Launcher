@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
@@ -69,6 +69,28 @@ struct Env {
     client: Option<String>,
 }
 
+static IMPORT_BUSY: AtomicBool = AtomicBool::new(false);
+
+/// Only one command at a time works on the import slot (the staging folder, incoming.mrpack and the state file):
+/// two at once would delete each other's staging, or the second would overwrite what the first records.
+pub(crate) struct ImportLock;
+
+impl ImportLock {
+    pub(crate) fn acquire() -> Result<ImportLock, String> {
+        if IMPORT_BUSY.swap(true, Ordering::AcqRel) {
+            Err("Набор уже обрабатывается, подождите".to_string())
+        } else {
+            Ok(ImportLock)
+        }
+    }
+}
+
+impl Drop for ImportLock {
+    fn drop(&mut self) {
+        IMPORT_BUSY.store(false, Ordering::Release);
+    }
+}
+
 /// A path inside the game directory as the pack gives it, or why it is refused. The result uses "/" and
 /// starts with one of the allowed folders.
 pub fn safe_rel_path(raw: &str) -> Result<String, String> {
@@ -82,7 +104,17 @@ pub fn safe_rel_path(raw: &str) -> Result<String, String> {
     if !ALLOWED_DIRS.contains(&parts[0]) {
         return Err("папка не поддерживается".to_string());
     }
+    // Windows drops a trailing dot or space and reads CON, NUL and the like as devices
+    if parts.iter().any(|p| p.ends_with(['.', ' ']) || is_device_name(p)) {
+        return Err("недопустимый путь".to_string());
+    }
     Ok(parts.join("/"))
+}
+
+fn is_device_name(part: &str) -> bool {
+    let stem = part.split('.').next().unwrap_or(part).to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((stem.starts_with("COM") || stem.starts_with("LPT")) && stem.len() == 4 && stem.as_bytes()[3].is_ascii_digit())
 }
 
 fn url_allowed(raw: &str) -> bool {
@@ -164,7 +196,8 @@ fn plan(index: &Index) -> Result<Plan, String> {
             continue;
         };
         let urls: Vec<String> = file.downloads.iter().filter(|url| url_allowed(url)).cloned().collect();
-        if urls.is_empty() || file.file_size > MAX_FILE_BYTES || !seen.insert(rel.clone()) {
+        // the size is required by the format, and without it the total could not be kept; paths that differ only in case are one file on Windows
+        if urls.is_empty() || file.file_size == 0 || file.file_size > MAX_FILE_BYTES || !seen.insert(rel.to_lowercase()) {
             plan.rejected.push(file.path.clone());
             continue;
         }
@@ -277,7 +310,6 @@ impl HttpFetch {
     fn new() -> Result<Self, String> {
         reqwest::blocking::Client::builder()
             .connect_timeout(Duration::from_secs(10))
-            .timeout(Duration::from_secs(300))
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
                 if attempt.previous().len() >= 5 {
                     attempt.error("слишком много перенаправлений")
@@ -295,7 +327,10 @@ impl HttpFetch {
 
 impl Fetch for HttpFetch {
     fn fetch(&self, url: &str, dest: &Path, max_bytes: u64) -> Result<(), String> {
-        let res = self.0.get(url).send().map_err(|err| err.to_string())?;
+        // The time allowed grows with the size, so a big file on a slow line is not cut at a fixed mark (about
+        // 800 kbit/s at the least), and a stalled one still ends
+        let allowed = Duration::from_secs((max_bytes / 100_000).clamp(60, 3600));
+        let res = self.0.get(url).timeout(allowed).send().map_err(|err| err.to_string())?;
         if !res.status().is_success() {
             return Err(format!("ответ {}", res.status()));
         }
@@ -420,7 +455,10 @@ fn move_into_place(from: &Path, to: &Path) -> Result<(), String> {
         return Ok(());
     }
     // The staging folder can sit on another disk than a moved game folder
-    std::fs::copy(from, to).map_err(|err| err.to_string())?;
+    if let Err(err) = std::fs::copy(from, to) {
+        let _ = std::fs::remove_file(to);
+        return Err(err.to_string());
+    }
     let _ = std::fs::remove_file(from);
     Ok(())
 }
@@ -502,6 +540,10 @@ fn install_into(
         consider(rel, staged, &mut outcome);
     }
 
+    if to_move.is_empty() {
+        return Err("В наборе нечего устанавливать: всё уже есть или не подходит".to_string());
+    }
+
     // Moved in one go; if one move fails the files of this import placed so far are taken back out
     let mut placed: Vec<PathBuf> = Vec::new();
     for (rel, staged) in &to_move {
@@ -518,7 +560,7 @@ fn install_into(
 
     // Files of the import this one replaces and that are not part of it go now
     for old in previous {
-        if !outcome.files.contains(old) {
+        if !outcome.files.contains(old) && safe_rel_path(old).is_ok() {
             let _ = std::fs::remove_file(minecraft_dir.join(old));
         }
     }
@@ -593,8 +635,10 @@ pub async fn stage_mrpack(request: tauri::ipc::Request<'_>) -> Result<String, St
     if bytes.len() > MAX_DROPPED_PACK_BYTES {
         return Err("Файл слишком большой".to_string());
     }
+    let lock = ImportLock::acquire()?;
     let bytes = bytes.clone();
     tauri::async_runtime::spawn_blocking(move || {
+        let _lock = lock;
         let path = staged_pack_path();
         std::fs::create_dir_all(crate::game::game_dir()).map_err(|err| err.to_string())?;
         std::fs::write(&path, bytes).map_err(|err| format!("Не удалось сохранить файл: {err}"))?;
@@ -606,7 +650,9 @@ pub async fn stage_mrpack(request: tauri::ipc::Request<'_>) -> Result<String, St
 
 #[tauri::command]
 pub async fn preview_mrpack(path: String) -> Result<MrpackPreview, String> {
+    let lock = ImportLock::acquire()?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _lock = lock;
         preview_of(
             Path::new(&path),
             crate::config::MC_VERSION,
@@ -620,7 +666,9 @@ pub async fn preview_mrpack(path: String) -> Result<MrpackPreview, String> {
 
 #[tauri::command]
 pub async fn apply_mrpack(app: AppHandle, path: String) -> Result<Outcome, String> {
+    let lock = ImportLock::acquire()?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _lock = lock;
         let fetcher = HttpFetch::new()?;
         let previous = previous_files();
         let progress = |current: usize, total: usize, name: &str| {
@@ -949,6 +997,37 @@ mod tests {
         assert_eq!(files, vec!["mods/new.jar", "mods/shared.jar"]);
         assert!(!dirs.game().join("mods/old.jar").exists());
         assert!(dirs.game().join("mods/theirs.jar").is_file());
+    }
+
+    #[test]
+    fn an_import_with_nothing_to_install_leaves_the_previous_one_alone() {
+        let dirs = Dirs::new("nothing");
+        std::fs::create_dir_all(dirs.game().join("mods")).unwrap();
+        std::fs::write(dirs.game().join("mods/old.jar"), jar_with_id("old")).unwrap();
+        // the only file of the pack is one the user already has, so nothing would be installed
+        std::fs::write(dirs.game().join("mods/theirs.jar"), jar_with_id("theirs")).unwrap();
+        let fetcher = write_pack(&dirs, DEPS, &[Entry { path: "mods/theirs.jar", body: jar_with_id("theirs") }], &[]);
+        let err = install(&dirs, &fetcher, &["mods/old.jar"]).unwrap_err();
+        assert!(err.contains("нечего"), "{err}");
+        assert!(dirs.game().join("mods/old.jar").is_file());
+    }
+
+    #[test]
+    fn the_previous_import_never_takes_files_outside_the_allowed_folders_with_it() {
+        let dirs = Dirs::new("options");
+        std::fs::write(dirs.game().join("options.txt"), b"mine").unwrap_or_default();
+        let fetcher = write_pack(&dirs, DEPS, &[Entry { path: "mods/new.jar", body: jar_with_id("new") }], &[]);
+        install(&dirs, &fetcher, &["options.txt"]).unwrap();
+        assert!(dirs.game().join("options.txt").is_file());
+    }
+
+    #[test]
+    fn names_windows_would_read_as_something_else_are_refused() {
+        for raw in ["mods/NUL", "mods/nul.jar", "config/con.txt", "mods/x.jar.", "mods/x.jar ", "mods/COM1.jar", "mods/lpt9"] {
+            assert!(safe_rel_path(raw).is_err(), "{raw}");
+        }
+        assert!(safe_rel_path("mods/console.jar").is_ok());
+        assert!(safe_rel_path("mods/common.jar").is_ok());
     }
 
     #[test]

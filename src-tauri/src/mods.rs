@@ -704,7 +704,9 @@ pub async fn get_installed_import_bundle() -> Option<Vec<String>> {
 
 #[tauri::command]
 pub async fn uninstall_import_bundle() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(|| {
+    let lock = crate::mrpack::ImportLock::acquire()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lock = lock;
         if let Some(bundle) = load_import_bundle_state() {
             let minecraft_dir = minecraft_dir();
             let mut delete_failed = false;
@@ -731,7 +733,9 @@ pub async fn uninstall_import_bundle() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn apply_import_bundle(code: String, mod_ids: Vec<String>) -> Result<(), String> {
+    let lock = crate::mrpack::ImportLock::acquire()?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _lock = lock;
         let client = timed_client();
         let bytes = download_bytes(&client, &code)?;
         let minecraft_dir = minecraft_dir();
