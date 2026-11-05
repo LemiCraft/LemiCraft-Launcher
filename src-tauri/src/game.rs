@@ -205,7 +205,7 @@ fn run(app: &AppHandle, username: String, process: Arc<Mutex<Option<Child>>>) ->
 
         if settings.auto_connect {
             installer.mojang_mut().set_quick_play(moj::QuickPlay::Multiplayer {
-                host: crate::config::SERVER_SRV_DOMAIN.to_string(),
+                host: crate::entry_points::quick_play_host(&settings.auto_connect_route),
                 port: crate::config::SERVER_PORT,
             });
         }

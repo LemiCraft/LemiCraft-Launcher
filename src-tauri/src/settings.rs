@@ -13,6 +13,9 @@ pub struct LauncherSettings {
     pub jvm_args: String,
     #[serde(default)]
     pub auto_connect: bool,
+    // The way into the server the auto-connect uses: "direct", "de", "nl", "ru", or "auto" for the one the last check recommended
+    #[serde(default = "default_route")]
+    pub auto_connect_route: String,
     // "none" | "hide" | "close" — what happens to the window once the game process starts
     #[serde(default = "default_on_launch")]
     pub on_launch: String,
@@ -47,6 +50,10 @@ fn default_jvm_args() -> String {
     "-XX:+UseG1GC -XX:+UnlockExperimentalVMOptions".to_string()
 }
 
+fn default_route() -> String {
+    "direct".to_string()
+}
+
 fn default_on_launch() -> String {
     "hide".to_string()
 }
@@ -57,6 +64,7 @@ impl Default for LauncherSettings {
             ram_gb: default_ram_gb(),
             jvm_args: default_jvm_args(),
             auto_connect: false,
+            auto_connect_route: default_route(),
             on_launch: default_on_launch(),
             game_dir: None,
             show_logs: false,

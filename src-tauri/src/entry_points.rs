@@ -550,6 +550,37 @@ impl Drop for RunGuard {
     }
 }
 
+// A recommendation older than this is not trusted for "auto": the network may have changed since
+const AUTO_ROUTE_MAX_AGE_SECS: u64 = 3 * 24 * 60 * 60;
+
+/// The host the auto-connect goes to for a chosen route. "auto" is the way the last check recommended if it
+/// is recent, the direct way otherwise; an unknown route is the direct way too.
+fn host_for_route(route: &str, last: Option<&Probe>, now: u64) -> &'static str {
+    let id = if route == "auto" {
+        last.filter(|probe| probe.checked_at + AUTO_ROUTE_MAX_AGE_SECS >= now).and_then(|probe| probe.suggestion.as_deref()).unwrap_or(DIRECT_ID)
+    } else {
+        route
+    };
+    POINTS.iter().find(|p| p.id == id).unwrap_or(&POINTS[0]).host
+}
+
+pub(crate) fn quick_play_host(route: &str) -> String {
+    host_for_route(route, load_store().last.as_ref(), crate::auth::now_unix()).to_string()
+}
+
+#[derive(Serialize)]
+pub struct RouteInfo {
+    id: &'static str,
+    label: &'static str,
+    host: &'static str,
+}
+
+/// The ways into the server, for the choice in settings
+#[tauri::command]
+pub fn get_entry_routes() -> Vec<RouteInfo> {
+    POINTS.iter().map(|p| RouteInfo { id: p.id, label: p.label, host: p.host }).collect()
+}
+
 fn store_path() -> std::path::PathBuf {
     crate::game::game_dir().join("entry_points.json")
 }
@@ -896,6 +927,20 @@ mod tests {
         assert_eq!(prefer_ipv4([v6, v4]), Some(v4));
         assert_eq!(prefer_ipv4([v6]), Some(v6));
         assert_eq!(prefer_ipv4([]), None);
+    }
+
+    #[test]
+    fn the_auto_connect_goes_where_the_player_chose_or_where_the_last_check_recommended() {
+        let probe = |suggestion: Option<&str>, at: u64| Probe { points: vec![], best: None, suggestion: suggestion.map(str::to_string), preliminary: false, checked_at: at };
+        let now = 10 * AUTO_ROUTE_MAX_AGE_SECS;
+        assert_eq!(host_for_route("direct", None, now), "lemicraft.ru");
+        assert_eq!(host_for_route("de", None, now), "de.lemicraft.ru");
+        assert_eq!(host_for_route("nl", Some(&probe(Some("ru"), now)), now), "nl.lemicraft.ru", "an explicit choice is not overridden");
+        assert_eq!(host_for_route("auto", Some(&probe(Some("ru"), now - 60)), now), "ru.lemicraft.ru");
+        assert_eq!(host_for_route("auto", Some(&probe(None, now)), now), "lemicraft.ru", "nothing recommended means the direct way");
+        assert_eq!(host_for_route("auto", Some(&probe(Some("ru"), now - AUTO_ROUTE_MAX_AGE_SECS - 1)), now), "lemicraft.ru", "an old recommendation is not used");
+        assert_eq!(host_for_route("auto", None, now), "lemicraft.ru");
+        assert_eq!(host_for_route("nowhere", None, now), "lemicraft.ru");
     }
 
     #[test]

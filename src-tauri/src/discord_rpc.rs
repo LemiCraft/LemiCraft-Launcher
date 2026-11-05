@@ -160,7 +160,7 @@ fn worker(app: AppHandle) {
         let payload = activity::Activity::new()
             .details(details)
             .assets(assets)
-            .buttons(vec![activity::Button::new("lemicraft.ru", crate::config::WEBSITE_URL)])
+            .buttons(vec![activity::Button::new("Сайт проекта", crate::config::WEBSITE_URL)])
             .timestamps(activity::Timestamps::new().start(since));
 
         if connected.set_activity(payload).is_ok() {

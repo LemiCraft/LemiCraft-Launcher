@@ -1,6 +1,8 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { entryPoints, entryState, initEntryPoints, runEntryProbe } from '../store/entryPoints.js';
+import { copyText } from '../utils/clipboard.js';
+import { pushNotification } from '../store/notifications.js';
 
 const open = defineModel({ type: Boolean, default: false });
 
@@ -41,6 +43,11 @@ onUnmounted(() => {
   clearInterval(clock);
   clearTimeout(shakeTimer);
 });
+
+async function copyHost(host) {
+  if (await copyText(host)) pushNotification('Адрес скопирован');
+  else pushNotification('Не удалось скопировать адрес', 'error');
+}
 
 function pingText(point) {
   return point.ping_ms == null ? '—' : `${Math.round(point.ping_ms)} мс`;
@@ -154,7 +161,12 @@ const progressKnown = computed(() => entryPoints.progress.total > 0);
                       <span v-if="point.id === entryPoints.probe.best" class="tag">лучший</span>
                     </Transition>
                   </span>
-                  <span class="point-host">{{ point.host }}<template v-if="detailText(point)"> · {{ detailText(point) }}</template></span>
+                  <span class="point-host">
+                    {{ point.host }}<template v-if="detailText(point)"> · {{ detailText(point) }}</template>
+                    <button class="copy-host" title="Скопировать адрес" aria-label="Скопировать адрес" @click="copyHost(point.host)">
+                      <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V6a2 2 0 0 1 2-2h9" /></svg>
+                    </button>
+                  </span>
                 </div>
                 <div class="range" :title="rangeTitle(point)">
                   <div class="range-track">
@@ -357,6 +369,23 @@ h2 {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.copy-host {
+  display: inline-flex;
+  vertical-align: -1px;
+  margin-left: 6px;
+  padding: 2px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.copy-host:hover {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 .tag {

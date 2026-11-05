@@ -22,6 +22,8 @@ const ramMax = ref(16);
 const jvmArgs = ref('');
 const onLaunch = ref('hide');
 const autoConnect = ref(false);
+const autoConnectRoute = ref('direct');
+const routes = ref([]);
 const showLogs = ref(false);
 const crashAnalyzer = ref(true);
 const discordRpc = ref(true);
@@ -94,17 +96,50 @@ const onLaunchMenuOpen = ref(false);
 const onLaunchWrapEl = ref(null);
 const onLaunchTriggerEl = ref(null);
 
+const ROUTE_AUTO = { id: 'auto', label: 'Автоматически' };
+const routeOptions = computed(() => [ROUTE_AUTO, ...(routes.value.length ? routes.value : [{ id: 'direct', label: 'Напрямую' }])]);
+const routeLabel = computed(() => routeOptions.value.find((o) => o.id === autoConnectRoute.value)?.label ?? 'Напрямую');
+const routeHint = computed(() => {
+  if (autoConnectRoute.value === 'auto') return 'Туда, куда советует последняя проверка подключения, иначе напрямую';
+  const route = routes.value.find((r) => r.id === autoConnectRoute.value);
+  return route ? `Адрес: ${route.host}` : 'Через какой путь заходить на сервер';
+});
+const routeMenuOpen = ref(false);
+const routeWrapEl = ref(null);
+const routeTriggerEl = ref(null);
+
+// the row that appears with the toggle clips its content while it grows, but must not clip the open list
+const routeSettled = ref(autoConnect.value);
+let routeSettleTimer = null;
+watch(autoConnect, (on) => {
+  clearTimeout(routeSettleTimer);
+  routeSettled.value = false;
+  if (!on) routeMenuOpen.value = false;
+  else routeSettleTimer = setTimeout(() => (routeSettled.value = true), 320);
+});
+
 // FLIP: measure the width before/after so the trigger button animates instead of snapping
 function selectOnLaunch(value) {
-  const el = onLaunchTriggerEl.value;
-  if (!el) {
+  flipSelect(onLaunchTriggerEl.value, () => {
     onLaunch.value = value;
     onLaunchMenuOpen.value = false;
+  });
+}
+
+function selectRoute(id) {
+  flipSelect(routeTriggerEl.value, () => {
+    autoConnectRoute.value = id;
+    routeMenuOpen.value = false;
+  });
+}
+
+function flipSelect(el, apply) {
+  if (!el) {
+    apply();
     return;
   }
   const fromWidth = el.getBoundingClientRect().width;
-  onLaunch.value = value;
-  onLaunchMenuOpen.value = false;
+  apply();
 
   nextTick(() => {
     el.style.transition = 'none';
@@ -128,6 +163,9 @@ function selectOnLaunch(value) {
 function handleOutsideClick(event) {
   if (onLaunchMenuOpen.value && onLaunchWrapEl.value && !onLaunchWrapEl.value.contains(event.target)) {
     onLaunchMenuOpen.value = false;
+  }
+  if (routeMenuOpen.value && routeWrapEl.value && !routeWrapEl.value.contains(event.target)) {
+    routeMenuOpen.value = false;
   }
 }
 onMounted(() => document.addEventListener('click', handleOutsideClick));
@@ -164,6 +202,9 @@ onMounted(async () => {
   jvmArgs.value = settings.jvm_args;
   onLaunch.value = settings.on_launch;
   autoConnect.value = settings.auto_connect;
+  autoConnectRoute.value = settings.auto_connect_route ?? 'direct';
+  routeSettled.value = settings.auto_connect;
+  invoke('get_entry_routes').then((list) => (routes.value = list ?? []));
   showLogs.value = settings.show_logs;
   crashAnalyzer.value = settings.crash_analyzer;
   discordRpc.value = settings.discord_rpc;
@@ -186,7 +227,7 @@ watch(translucent, (on) => {
   if (settingsLoaded.value && translucencySupported.value) applyTranslucent(on, { animate: true });
 });
 
-watch([ram, jvmArgs, onLaunch, autoConnect, showLogs, crashAnalyzer, discordRpc, translucent, gameDir], () => {
+watch([ram, jvmArgs, onLaunch, autoConnect, autoConnectRoute, showLogs, crashAnalyzer, discordRpc, translucent, gameDir], () => {
   if (!settingsLoaded.value || !window.__TAURI_INTERNALS__) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
@@ -197,6 +238,7 @@ watch([ram, jvmArgs, onLaunch, autoConnect, showLogs, crashAnalyzer, discordRpc,
         jvm_args: jvmArgs.value,
         on_launch: onLaunch.value,
         auto_connect: autoConnect.value,
+        auto_connect_route: autoConnectRoute.value,
         show_logs: showLogs.value,
         crash_analyzer: crashAnalyzer.value,
         discord_rpc: discordRpc.value,
@@ -314,6 +356,35 @@ onUnmounted(() => {
           <span class="knob"></span>
         </button>
       </div>
+      <div class="route-wrap" :class="{ expanded: autoConnect, settled: routeSettled }">
+        <div class="route-inner">
+          <div class="row">
+            <div class="row-text">
+              <span class="row-title">Подключаться через</span>
+              <span class="row-sub">{{ routeHint }}</span>
+            </div>
+            <div class="dropdown-wrap" ref="routeWrapEl">
+              <button class="dropdown-trigger" ref="routeTriggerEl" :tabindex="autoConnect ? 0 : -1" @click="routeMenuOpen = !routeMenuOpen">
+                {{ routeLabel }}
+                <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" :class="{ open: routeMenuOpen }"><path d="M7 10l5 5 5-5H7Z"/></svg>
+              </button>
+              <Transition name="dropdown">
+                <div v-if="routeMenuOpen" class="dropdown-menu">
+                  <button
+                    v-for="opt in routeOptions"
+                    :key="opt.id"
+                    class="dropdown-item"
+                    :class="{ active: autoConnectRoute === opt.id }"
+                    @click="selectRoute(opt.id)"
+                  >
+                    {{ opt.label }}
+                  </button>
+                </div>
+              </Transition>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="row">
         <div class="row-text">
           <span class="row-title">Показывать окно с логами</span>
@@ -343,6 +414,17 @@ onUnmounted(() => {
       </div>
     </section>
 
+    <section class="group">
+      <h2>Подключение</h2>
+      <div class="row">
+        <div class="row-text">
+          <span class="row-title">Подбор подключения</span>
+          <span class="row-sub">{{ entrySummary }}</span>
+        </div>
+        <button class="browse-btn" @click="entryModalOpen = true">Подробнее</button>
+      </div>
+    </section>
+
     <section v-if="translucencySupported" class="group">
       <h2>Внешний вид</h2>
       <div class="row">
@@ -353,17 +435,6 @@ onUnmounted(() => {
         <button class="toggle" :class="{ on: translucent }" @click="translucent = !translucent">
           <span class="knob"></span>
         </button>
-      </div>
-    </section>
-
-    <section class="group">
-      <h2>Подключение</h2>
-      <div class="row">
-        <div class="row-text">
-          <span class="row-title">Подбор подключения</span>
-          <span class="row-sub">{{ entrySummary }}</span>
-        </div>
-        <button class="browse-btn" @click="entryModalOpen = true">Подробнее</button>
       </div>
     </section>
 
@@ -522,6 +593,27 @@ onUnmounted(() => {
 }
 .group h2 + .row {
   border-top: none;
+}
+
+/* grows open with the toggle; its content is clipped only while that happens, so the open list is not */
+.route-wrap {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s ease;
+}
+.route-wrap.expanded {
+  grid-template-rows: 1fr;
+}
+.route-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+.route-wrap:not(.expanded) .route-inner {
+  visibility: hidden;
+  transition: visibility 0s 0.28s;
+}
+.route-wrap.settled .route-inner {
+  overflow: visible;
 }
 
 .row-text {

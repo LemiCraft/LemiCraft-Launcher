@@ -179,6 +179,7 @@ pub fn run() {
       mrpack::stage_mrpack,
       mrpack::preview_mrpack,
       mrpack::apply_mrpack,
+      entry_points::get_entry_routes,
       entry_points::probe_entry_points,
       entry_points::get_cached_entry_points,
       settings::get_settings,
