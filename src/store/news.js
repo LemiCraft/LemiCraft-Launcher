@@ -5,6 +5,8 @@ export const newsState = reactive({
   loaded: false,
   loading: false,
   loadingMore: false,
+  // the next page failed even after retries: the feed shows a button instead of trying again by itself
+  moreFailed: false,
   error: false,
   hasMore: false,
   lastId: null,
@@ -80,6 +82,7 @@ export async function fetchNews({ force = false } = {}) {
     newsState.items = page.items.map(mapNewsItem);
     newsState.hasMore = page.hasMore;
     newsState.lastId = page.lastId;
+    newsState.moreFailed = false;
     newsState.error = false;
     lastFetchedAt = Date.now();
   } catch (err) {
@@ -94,21 +97,40 @@ export async function fetchNews({ force = false } = {}) {
   }
 }
 
+// A page that fails is asked for again a couple of times: one lost request must not leave the feed at its first cards
+const MORE_RETRY_DELAYS_MS = [900, 2600];
+
 export async function loadMoreNews() {
-  if (!window.__TAURI_INTERNALS__ || newsState.loadingMore || !newsState.hasMore || !newsState.lastId) return;
+  if (!window.__TAURI_INTERNALS__ || newsState.loadingMore || newsState.moreFailed || !newsState.hasMore || !newsState.lastId) return;
   const myGeneration = requestGeneration;
   newsState.loadingMore = true;
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    const page = await invoke('get_more_news', { before: newsState.lastId });
-    // A fetchNews() (refresh) may have reset the list while this was in flight — discard then
-    if (myGeneration !== requestGeneration) return;
-    newsState.items.push(...page.items.map(mapNewsItem));
-    newsState.hasMore = page.hasMore;
-    newsState.lastId = page.lastId;
-  } catch (err) {
-    console.error('failed to load more news:', err);
+    for (let attempt = 0; ; attempt++) {
+      try {
+        const page = await invoke('get_more_news', { before: newsState.lastId });
+        // A fetchNews() (refresh) may have reset the list while this was in flight — discard then
+        if (myGeneration !== requestGeneration) return;
+        newsState.items.push(...page.items.map(mapNewsItem));
+        newsState.hasMore = page.hasMore;
+        newsState.lastId = page.lastId;
+        return;
+      } catch (err) {
+        console.error('failed to load more news:', err);
+        if (attempt >= MORE_RETRY_DELAYS_MS.length) {
+          if (myGeneration === requestGeneration) newsState.moreFailed = true;
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, MORE_RETRY_DELAYS_MS[attempt]));
+        if (myGeneration !== requestGeneration) return;
+      }
+    }
   } finally {
     newsState.loadingMore = false;
   }
+}
+
+export function retryLoadMoreNews() {
+  newsState.moreFailed = false;
+  return loadMoreNews();
 }

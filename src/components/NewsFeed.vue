@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import NewsModal from './NewsModal.vue';
 import { parseInline, previewText, replaceDiscordTimestamps, shortDisplayTitle } from '../utils/newsMarkdown.js';
-import { newsState, fetchNews, loadMoreNews } from '../store/news.js';
+import { newsState, fetchNews, loadMoreNews, retryLoadMoreNews } from '../store/news.js';
 
 const scrollEl = ref(null);
 const topFaded = ref(false);
@@ -58,7 +58,13 @@ watch(
   },
 );
 
-onMounted(() => fetchNews());
+// Also looks once the list is there: coming back to the page shows the news that are already loaded, and
+// nothing changes in them that would make the watcher above look again
+onMounted(async () => {
+  await fetchNews();
+  await nextTick();
+  onScroll();
+});
 </script>
 
 <template>
@@ -125,6 +131,10 @@ onMounted(() => fetchNews());
 
         <div v-if="feedState === 'content'" class="load-more">
           <span v-if="newsState.loadingMore" class="load-more-spinner"></span>
+          <span v-else-if="newsState.moreFailed" class="load-more-failed">
+            Не удалось загрузить ещё новости
+            <button class="load-more-retry" @click="retryLoadMoreNews">Повторить</button>
+          </span>
           <span v-else-if="!newsState.hasMore" class="load-more-end">Это все новости</span>
         </div>
       </div>
@@ -215,6 +225,28 @@ onMounted(() => fetchNews());
   display: flex;
   justify-content: center;
   padding: 16px 0 4px;
+}
+
+.load-more-failed {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+.load-more-retry {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.load-more-retry:hover {
+  background: var(--surface-2);
 }
 
 .load-more-end {

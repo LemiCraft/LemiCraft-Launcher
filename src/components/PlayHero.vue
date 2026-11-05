@@ -1,24 +1,70 @@
 <script>
-// every title has to fit one line of the card at the narrowest window, or the card changes its height
+// Every title has to fit one line of the card at the narrowest window (about 26 letters), or the card changes
+// its height. Short, warm, no full stop at the end.
 const heroTitles = [
-  'Все в сборе, ждём тебя!',
-  'Лапки чешутся? Заходи!',
+  // invitations
   'Готов залетать?',
-  'Пушистики уже заждались',
-  'Мир ждёт твои лапки!',
   'Заходи, у нас уютно',
-  'Пора за приключениями!',
+  'Заходи на огонёк!',
+  'Ты как раз вовремя!',
+  'Давай-давай, заходи!',
+  'А вот и наш пушистик!',
+  'Давно не виделись!',
+  'Все в сборе, ждём тебя!',
+  'Налей чаю и заходи',
+  // longing
   'Сервер скучает без тебя',
+  'Без тебя тут тихо',
+  'Лемикрафт соскучился',
+  'Пушистики уже заждались',
+  'Кто-то ждёт тебя в игре',
+  'Твой уголок ждёт тебя',
   'Пора вернуться домой!',
-  'Хвост трубой, и в игру!',
+  'Домой, пушистик!',
+  'Мурр, а ты где был?',
+  // paws and tails
+  'Лапки чешутся? Заходи!',
   'Лапки готовы? Поехали!',
+  'Хвост трубой, и в игру!',
+  'Пора размять лапки!',
+  'Мир ждёт твои лапки!',
+  'Хвостик виляет: заходи!',
+  'Время мурчать и копать!',
+  'Лапы в руки, и в игру!',
+  // what to do
+  'Что построим сегодня?',
+  'Кого сегодня встретим?',
+  'Пойдём что-нибудь построим',
+  'Как насчёт приключения?',
+  'Пора за приключениями!',
+  'Тут пахнет приключениями',
+  'Сегодня точно будет весело',
+  'Пушистый день начинается',
+  'Новый день, новые лапки',
 ];
-let previousHeroTitleIndex = -1;
 
-function chooseHeroTitle() {
-  const available = heroTitles.map((_, index) => index).filter((index) => index !== previousHeroTitleIndex);
-  previousHeroTitleIndex = available[Math.floor(Math.random() * available.length)];
-  return heroTitles[previousHeroTitleIndex];
+// and some for the time of the day, picked about every other time
+const timeTitles = {
+  morning: ['Доброе утро, пушистик!', 'Утро начинается с игры', 'Кофе, лапки, Minecraft'],
+  day: ['Хороший день для стройки', 'День в самом разгаре'],
+  evening: ['Добрый вечер, лапки!', 'Вечер для приключений?', 'Вечерний заход?'],
+  night: ['Не спится? Заходи!', 'Сова, это ты? Заходи!', 'Ночная смена в игре'],
+};
+
+function titlesForNow(hour) {
+  if (hour >= 5 && hour < 11) return timeTitles.morning;
+  if (hour >= 11 && hour < 17) return timeTitles.day;
+  if (hour >= 17 && hour < 23) return timeTitles.evening;
+  return timeTitles.night;
+}
+
+let previousHeroTitle = '';
+
+function chooseHeroTitle(hour = new Date().getHours(), random = Math.random) {
+  const pool = random() < 0.4 ? titlesForNow(hour) : heroTitles;
+  const available = pool.filter((title) => title !== previousHeroTitle);
+  previousHeroTitle = available[Math.floor(random() * available.length)];
+  return previousHeroTitle;
 }
 </script>
 
