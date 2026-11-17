@@ -112,9 +112,13 @@ onBeforeUnmount(() => clearInterval(checkTimer));
               :style="{ animationDelay: `${i * 45}ms` }"
               @click="openNews(item)"
             >
-              <div class="news-top">
+              <div class="news-author">
+                <div class="author-avatar" v-if="item.authorAvatarUrl">
+                  <img :src="item.authorAvatarUrl" alt="" loading="lazy" />
+                </div>
+                <div class="author-avatar author-avatar-fallback" v-else>{{ (item.author || '?').charAt(0) }}</div>
+                <span class="author-name" :title="item.author">{{ item.author }}</span>
                 <span class="tag" :data-tag="item.tag">{{ item.tag }}</span>
-                <span class="date">{{ item.date }}</span>
               </div>
               <h3>
                 <template v-for="(t, ti) in excerptTokens(shortDisplayTitle(cardTitle(item.title)), item.mentions)" :key="ti">
@@ -437,6 +441,50 @@ onBeforeUnmount(() => clearInterval(checkTimer));
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
+}
+
+.news-author {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.author-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--surface-2);
+}
+.author-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.author-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+.author-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.news-author .tag {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .tag {
