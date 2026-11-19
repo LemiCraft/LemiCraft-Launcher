@@ -239,6 +239,22 @@ export async function checkModrinthPackUpdate() {
   }
 }
 
+// { name, version, from_link } of the installed Modrinth pack, null for a set of a code
+export async function getInstalledPack() {
+  if (!window.__TAURI_INTERNALS__) return null;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke('installed_pack');
+  } catch {
+    return null;
+  }
+}
+
+// The check asked by the player: { project, current, latest, changelog } or null when up to date; throws with the reason
+export async function recheckModrinthPack() {
+  return withInvoke((invoke) => invoke('recheck_modrinth_pack'));
+}
+
 // A Modrinth pack (.mrpack) from a file: the preview says what it holds and whether it fits the game
 export async function previewMrpack(path) {
   return withInvoke((invoke) => invoke('preview_mrpack', { path }));

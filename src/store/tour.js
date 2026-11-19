@@ -55,7 +55,7 @@ export const TOUR_STEPS = [
     target: '[data-tour="login-btn"], [data-tour="account"]',
     page: 'home',
     placement: 'right',
-    title: 'Шаг 1. Войдите в аккаунт',
+    title: 'Войдите в аккаунт',
     text: 'Для игры на сервере и для скинов нужен аккаунт Microsoft или Ely.by. Вход откроется в отдельном окне',
   },
   {
@@ -63,7 +63,7 @@ export const TOUR_STEPS = [
     target: '[data-tour="upload-skin"]',
     page: 'skins',
     placement: 'bottom',
-    title: 'Шаг 2. Выберите скин',
+    title: 'Выберите скин',
     text: 'Загрузите файл со своим скином, потом наденьте его в списке. Если скина пока нет, этот шаг можно пропустить',
   },
   {
@@ -71,7 +71,7 @@ export const TOUR_STEPS = [
     target: '[data-tour="play"]',
     page: 'home',
     placement: 'bottom',
-    title: 'Шаг 3. Установите и запустите игру',
+    title: 'Установите и запустите игру',
     text: 'Лаунчер сам скачает Java, игру и моды, это несколько минут и пара гигабайт места. Ход установки виден внизу окна. Если места или времени сейчас нет, пропустите шаг и вернитесь позже',
   },
 ];

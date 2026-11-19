@@ -15,6 +15,8 @@ import {
   stageMrpack,
   stageModrinthPack,
   checkModrinthPackUpdate,
+  getInstalledPack,
+  recheckModrinthPack,
   uninstallImportBundle,
   loadInstalledImportBundle,
   isPackOnly,
@@ -214,8 +216,23 @@ async function onLoadMrpackLink() {
 
 // A pack installed by a link: says when a newer version is out
 const packUpdate = ref(null);
+const installedPack = ref(null);
+const packRechecking = ref(false);
 async function refreshPackUpdate() {
+  installedPack.value = await getInstalledPack();
   packUpdate.value = await checkModrinthPackUpdate();
+}
+async function onRecheckPack() {
+  if (packRechecking.value) return;
+  packRechecking.value = true;
+  try {
+    packUpdate.value = await recheckModrinthPack();
+    if (!packUpdate.value) pushNotification('Обновлений нет, версия набора последняя');
+  } catch (err) {
+    pushNotification(String(err), 'error');
+  } finally {
+    packRechecking.value = false;
+  }
 }
 async function onUpdatePack() {
   if (!packUpdate.value || mrpackChecking.value) return;
@@ -400,21 +417,33 @@ watch(
           </div>
           <p v-if="importError" class="error-text">{{ importError }}</p>
           <div v-if="modsState.installedImportModIds.length && !importPreview" class="import-installed-row">
-            <span>Установлен набор из {{ modsState.installedImportModIds.length }} модов</span>
-            <button class="pack-remove-btn" :disabled="modsState.applying" @click="onRemoveImportBundle">Удалить</button>
+            <div v-if="installedPack" class="installed-pack">
+              <span class="installed-name">{{ installedPack.name }}</span>
+              <span class="installed-sub">{{ installedPack.version ? `Версия ${installedPack.version} · ` : '' }}модов: {{ modsState.installedImportModIds.length }}</span>
+            </div>
+            <span v-else>Установлен набор из {{ modsState.installedImportModIds.length }} модов</span>
+            <div class="installed-actions">
+              <button v-if="installedPack?.from_link" class="secondary-btn" :disabled="packRechecking || mrpackChecking || modsState.applying" @click="onRecheckPack">
+                {{ packRechecking ? 'Проверяю...' : 'Проверить обновления' }}
+              </button>
+              <button class="pack-remove-btn" :disabled="modsState.applying" @click="onRemoveImportBundle">Удалить</button>
+            </div>
           </div>
           <div class="mrpack-row">
-            <span class="mrpack-label">Набор Modrinth (.mrpack)</span>
+            <span class="mrpack-label">Набор Modrinth</span>
+            <button class="site-link" :disabled="mrpackChecking || modsState.applying" @click="onPickMrpack">Выбрать файл .mrpack</button>
           </div>
           <div class="import-row">
             <input v-model="mrpackLink" type="text" placeholder="Ссылка на набор с modrinth.com" spellcheck="false" @keyup.enter="onLoadMrpackLink" />
             <button class="secondary-btn" :disabled="!mrpackLink.trim() || mrpackChecking || modsState.applying" @click="onLoadMrpackLink">
               {{ mrpackChecking ? 'Загружаю...' : 'Загрузить' }}
             </button>
-            <button class="secondary-btn" :disabled="mrpackChecking || modsState.applying" @click="onPickMrpack">Выбрать файл</button>
           </div>
-          <div v-if="packUpdate && !mrpackPreview" class="import-installed-row">
-            <span>Вышла новая версия набора: {{ packUpdate.current }} → {{ packUpdate.latest }}</span>
+          <div v-if="packUpdate && !mrpackPreview" class="import-installed-row update-row">
+            <div class="installed-pack">
+              <span class="installed-name">Вышла новая версия: {{ packUpdate.current }} → {{ packUpdate.latest }}</span>
+              <span v-if="packUpdate.changelog" class="installed-changes">{{ packUpdate.changelog }}</span>
+            </div>
             <button class="secondary-btn" :disabled="mrpackChecking || modsState.applying" @click="onUpdatePack">Обновить</button>
           </div>
           <p v-if="mrpackError" class="error-text">{{ mrpackError }}</p>
@@ -640,7 +669,8 @@ watch(
 }
 
 .pack-remove-btn {
-  padding: 10px 16px;
+  min-height: 36px;
+  padding: 0 16px;
   border-radius: 9px;
   border: 1px solid var(--border);
   background: transparent;
@@ -752,7 +782,7 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 .import-card-head .section-title {
   margin-bottom: 0;
@@ -800,6 +830,7 @@ watch(
 
 .secondary-btn {
   flex-shrink: 0;
+  min-width: 116px;
   padding: 0 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
@@ -828,7 +859,7 @@ watch(
   justify-content: space-between;
   gap: 10px;
   margin-top: 12px;
-  padding: 10px 12px;
+  padding: 8px 8px 8px 14px;
   border-radius: 8px;
   background: var(--surface-2);
   font-size: 12.5px;
@@ -879,11 +910,40 @@ watch(
   margin-left: auto;
 }
 
+.installed-pack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.installed-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+}
+.installed-sub,
+.installed-changes {
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.installed-changes {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-line;
+}
+.installed-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: 8px;
+}
 .mrpack-row {
   display: flex;
   align-items: center;
-  margin-top: 14px;
-  margin-bottom: 8px;
+  justify-content: space-between;
+  margin-top: 12px;
+  margin-bottom: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }

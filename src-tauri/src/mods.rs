@@ -624,6 +624,11 @@ pub(crate) struct ImportBundleState {
     /// Where a Modrinth pack came from, when it was taken by a link: lets the launcher say that a newer one is out
     #[serde(default)]
     pub(crate) source: Option<PackSource>,
+    /// Name and version of an installed Modrinth pack, to show what is installed
+    #[serde(default)]
+    pub(crate) name: String,
+    #[serde(default)]
+    pub(crate) version: String,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -649,6 +654,8 @@ pub(crate) fn load_import_bundle_state() -> Option<ImportBundleState> {
             .collect(),
         mod_ids: state.mod_ids,
         source: state.source,
+        name: state.name,
+        version: state.version,
     };
     // Jar-based like load_official_pack_state: config/options.txt get recreated by the game, so they can't count as installed
     let minecraft_dir = minecraft_dir();
@@ -779,7 +786,7 @@ pub async fn apply_import_bundle(code: String, mod_ids: Vec<String>) -> Result<(
             }
         }
 
-        save_import_bundle_state(&ImportBundleState { files: new_files, mod_ids, source: None })
+        save_import_bundle_state(&ImportBundleState { files: new_files, mod_ids, ..Default::default() })
     })
     .await
     .map_err(|err| err.to_string())?

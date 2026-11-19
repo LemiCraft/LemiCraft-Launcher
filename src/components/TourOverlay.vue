@@ -186,7 +186,7 @@ onBeforeUnmount(() => {
           </span>
           <div class="actions">
             <button v-if="isWelcome" class="btn ghost" @click="finishTour">Не сейчас</button>
-            <button v-else-if="canPutOff" class="btn ghost" @click="nextTourStep">Пропустить шаг</button>
+            <button v-else-if="canPutOff" class="btn ghost put-off" @click="nextTourStep">Пропустить шаг</button>
             <button v-if="tourState.step > 1" class="btn" @click="previousTourStep">Назад</button>
             <button class="btn primary next" @click="mainButton.run">{{ mainButton.label }}</button>
           </div>
@@ -319,6 +319,11 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
+}
+/* the quiet button stays at the left edge, the two others are a pair at the right */
+.put-off {
+  margin-right: auto;
+  padding-left: 0;
 }
 .dots {
   display: flex;

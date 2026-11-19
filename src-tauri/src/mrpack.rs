@@ -651,6 +651,8 @@ struct ModrinthVersion {
     id: String,
     version_number: String,
     #[serde(default)]
+    changelog: Option<String>,
+    #[serde(default)]
     files: Vec<ModrinthFile>,
 }
 
@@ -669,13 +671,14 @@ fn pick_pack_version(versions: Vec<ModrinthVersion>) -> Option<(PackVersion, Str
     versions.into_iter().find_map(|version| {
         let packs: Vec<&ModrinthFile> = version.files.iter().filter(|f| f.filename.ends_with(".mrpack") && url_allowed(&f.url)).collect();
         let file = packs.iter().find(|f| f.primary).or(packs.first())?;
-        Some((PackVersion { id: version.id.clone(), number: version.version_number.clone() }, file.url.clone(), file.size))
+        Some((PackVersion { id: version.id.clone(), number: version.version_number.clone(), changelog: version.changelog.clone().unwrap_or_default() }, file.url.clone(), file.size))
     })
 }
 
 struct PackVersion {
     id: String,
     number: String,
+    changelog: String,
 }
 
 fn latest_pack_version(fetcher: &HttpFetch, project: &str) -> Result<(PackVersion, String, u64), String> {
@@ -731,18 +734,48 @@ pub struct PackUpdate {
     project: String,
     current: String,
     latest: String,
+    /// What the newer version says is new, cut to a size that fits a card
+    changelog: String,
+}
+
+#[derive(Serialize)]
+pub struct InstalledPack {
+    name: String,
+    version: String,
+    from_link: bool,
+}
+
+/// What the installed pack is called, when it came from a Modrinth pack
+#[tauri::command]
+pub fn installed_pack() -> Option<InstalledPack> {
+    let state = load_import_bundle_state()?;
+    if state.name.is_empty() {
+        return None;
+    }
+    let from_link = state.source.is_some();
+    let version = state.source.map(|s| s.version_number).unwrap_or(state.version);
+    Some(InstalledPack { name: state.name, version, from_link })
+}
+
+fn pack_update_now() -> Result<Option<PackUpdate>, String> {
+    let source = load_import_bundle_state()
+        .and_then(|state| state.source)
+        .ok_or("Набор поставлен не по ссылке, обновления проверить нельзя")?;
+    let (latest, _, _) = latest_pack_version(&HttpFetch::new()?, &source.project)?;
+    let changelog: String = latest.changelog.trim().chars().take(700).collect();
+    Ok((latest.id != source.version_id).then(|| PackUpdate { project: source.project, current: source.version_number, latest: latest.number, changelog }))
+}
+
+/// The check the player asked for: says why it failed, and Ok(None) when the pack is up to date
+#[tauri::command]
+pub async fn recheck_modrinth_pack() -> Result<Option<PackUpdate>, String> {
+    tauri::async_runtime::spawn_blocking(pack_update_now).await.map_err(|err| err.to_string())?
 }
 
 /// A newer version of the installed pack, when it was installed by a link and one is out
 #[tauri::command]
 pub async fn check_modrinth_pack_update() -> Option<PackUpdate> {
-    tauri::async_runtime::spawn_blocking(|| {
-        let source = load_import_bundle_state()?.source?;
-        let (latest, _, _) = latest_pack_version(&HttpFetch::new().ok()?, &source.project).ok()?;
-        (latest.id != source.version_id).then(|| PackUpdate { project: source.project, current: source.version_number, latest: latest.number })
-    })
-    .await
-    .unwrap_or(None)
+    tauri::async_runtime::spawn_blocking(|| pack_update_now().ok().flatten()).await.unwrap_or(None)
 }
 
 #[tauri::command]
@@ -790,6 +823,7 @@ pub async fn apply_mrpack(app: AppHandle, path: String) -> Result<Outcome, Strin
         let _lock = lock;
         let fetcher = HttpFetch::new()?;
         let previous = previous_files();
+        let (name, version) = open_pack(Path::new(&path)).and_then(|mut archive| read_index(&mut archive)).map(|index| (index.name, index.version_id)).unwrap_or_default();
         let progress = |current: usize, total: usize, name: &str| {
             let _ = app.emit("mods-progress", serde_json::json!({ "stage": "mrpack", "current": current, "total": total, "id": name }));
         };
@@ -808,7 +842,7 @@ pub async fn apply_mrpack(app: AppHandle, path: String) -> Result<Outcome, Strin
         // the source belongs to the staged file it was downloaded as, never to a file chosen from the disk
         let staged = Path::new(&path) == staged_pack_path();
         let source = if staged { std::fs::read_to_string(staged_source_path()).ok().and_then(|json| serde_json::from_str::<PackSource>(&json).ok()) } else { None };
-        save_import_bundle_state(&ImportBundleState { files: outcome.files.clone(), mod_ids: outcome.mod_ids.clone(), source })?;
+        save_import_bundle_state(&ImportBundleState { files: outcome.files.clone(), mod_ids: outcome.mod_ids.clone(), source, name, version })?;
         // a staged pack was only kept for this; a failed import keeps it, so that it can be tried again
         if staged {
             let _ = std::fs::remove_file(&path);

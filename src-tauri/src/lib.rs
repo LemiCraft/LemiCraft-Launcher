@@ -191,6 +191,8 @@ pub fn run() {
       mrpack::apply_mrpack,
       mrpack::stage_modrinth_pack,
       mrpack::check_modrinth_pack_update,
+      mrpack::recheck_modrinth_pack,
+      mrpack::installed_pack,
       profile::get_profile,
       profile::get_cached_profile,
       notify::show_notification,
