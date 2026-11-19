@@ -59,4 +59,5 @@ tauri-plugin-updater = "2"
 
 [target.'cfg(windows)'.dependencies]
 tauri-plugin-prevent-default = { version = "6.0.1", features = ["platform-windows"] }
+tauri-winrt-notification = "0.8.1"
 windows = { version = "0.62", features = ["Win32_Security_Cryptography", "Win32_Foundation"] }

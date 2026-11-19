@@ -130,7 +130,7 @@ import { progressToastState, hideProgress } from '../store/progressToast.js';
 
 .percent {
   flex-shrink: 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-faint);
 }
 

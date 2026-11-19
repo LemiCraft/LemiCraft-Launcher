@@ -106,7 +106,7 @@ impl ProbeError {
         match self {
             ProbeError::Refused => "Сервер отклонил подключение",
             ProbeError::Reset => "Соединение оборвалось",
-            ProbeError::Timeout => "Нет ответа (тайм-аут)",
+            ProbeError::Timeout => "Нет ответа",
             ProbeError::NoPing => "Сервер не ответил на ping",
             ProbeError::Protocol => "Неожиданный ответ сервера",
             ProbeError::Other => "Не удалось подключиться",

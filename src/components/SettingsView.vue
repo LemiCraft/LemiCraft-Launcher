@@ -1,5 +1,6 @@
 <script setup>
-import { notify } from '../store/notifyWatch.js';
+import { startTour } from '../store/tour.js';
+import { JVM_PROFILES, profileOf, profileRam, recommendedProfile } from '../utils/jvmProfiles.js';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { pushNotification } from '../store/notifications.js';
 import { showConfirmDialog } from '../store/confirmDialog.js';
@@ -29,11 +30,6 @@ const showLogs = ref(false);
 const crashAnalyzer = ref(true);
 const discordRpc = ref(true);
 const notifications = ref(true);
-// TEMPORARY: shows each kind of notification at once, to see how it looks
-const NOTIFY_SAMPLES = [
-  ['Новость LemiCraft', 'Тем временем сегодня в Лемистане официальный праздник'],
-  ['Сервер снова онлайн', 'LemiCraft доступен, можно заходить'],
-];
 const autostart = ref(false);
 
 // kept by the system, not in the settings file
@@ -101,6 +97,20 @@ function onResetGameDir() {
 }
 
 const DEFAULT_JVM_ARGS = '-XX:+UseG1GC -XX:+UnlockExperimentalVMOptions';
+
+// Memory and flags in one choice: it sets both, and any change by hand makes it "own"
+const activeProfile = computed(() => profileOf(ram.value, jvmArgs.value, ramMax.value));
+const suggestedProfile = computed(() => recommendedProfile(ramMax.value));
+const profileMenuOpen = ref(false);
+const profileWrapEl = ref(null);
+const profileTriggerEl = ref(null);
+function chooseProfile(profile) {
+  flipSelect(profileTriggerEl.value, () => {
+    ram.value = Math.min(profileRam(profile, ramMax.value), ramMax.value);
+    jvmArgs.value = profile.args;
+    profileMenuOpen.value = false;
+  });
+}
 
 function onResetJvmArgs() {
   jvmArgs.value = DEFAULT_JVM_ARGS;
@@ -187,6 +197,9 @@ function handleOutsideClick(event) {
   }
   if (routeMenuOpen.value && routeWrapEl.value && !routeWrapEl.value.contains(event.target)) {
     routeMenuOpen.value = false;
+  }
+  if (profileMenuOpen.value && profileWrapEl.value && !profileWrapEl.value.contains(event.target)) {
+    profileMenuOpen.value = false;
   }
 }
 onMounted(() => document.addEventListener('click', handleOutsideClick));
@@ -300,12 +313,42 @@ onUnmounted(() => {
       <h2>Ресурсы</h2>
       <div class="row">
         <div class="row-text">
+          <span class="row-title">Профиль производительности</span>
+          <Transition name="sub" mode="out-in">
+            <span :key="activeProfile?.id ?? 'own'" class="row-sub">{{ activeProfile ? activeProfile.hint : 'Свои значения памяти и флагов, выбранные вручную' }}</span>
+          </Transition>
+        </div>
+        <div class="dropdown-wrap" ref="profileWrapEl">
+          <button class="dropdown-trigger" ref="profileTriggerEl" @click="profileMenuOpen = !profileMenuOpen">
+            {{ activeProfile ? activeProfile.label : 'Свой' }}
+            <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" :class="{ open: profileMenuOpen }"><path d="M7 10l5 5 5-5H7Z"/></svg>
+          </button>
+          <Transition name="dropdown">
+            <div v-if="profileMenuOpen" class="dropdown-menu wide">
+              <button
+                v-for="profile in JVM_PROFILES"
+                :key="profile.id"
+                class="dropdown-item"
+                :class="{ active: activeProfile?.id === profile.id }"
+                @click="chooseProfile(profile)"
+              >
+                {{ profile.label }}
+                <span v-if="suggestedProfile.id === profile.id" class="profile-rec">для вашего ПК</span>
+              </button>
+            </div>
+          </Transition>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-text">
           <span class="row-title">Выделено памяти</span>
           <span class="row-sub">Рекомендуем не больше половины от общего объёма ОЗУ</span>
         </div>
         <div class="ram-control">
           <input
             type="range"
+            aria-label="Выделено памяти"
+            :aria-valuetext="`${ram} ГБ`"
             min="1"
             :max="ramMax"
             step="1"
@@ -327,7 +370,7 @@ onUnmounted(() => {
           <span class="row-sub">Дополнительные флаги для запуска Java</span>
         </div>
         <div class="path-row">
-          <input type="text" class="text-input mono" v-model="jvmArgs" spellcheck="false" />
+          <input type="text" class="text-input mono" v-model="jvmArgs" aria-label="Аргументы JVM" spellcheck="false" />
           <ArmedResetButton title="Сбросить к значению по умолчанию" @confirm="onResetJvmArgs" />
         </div>
       </div>
@@ -376,7 +419,7 @@ onUnmounted(() => {
           <span class="row-title">Автоподключение к lemicraft.ru</span>
           <span class="row-sub">Сразу зайти на сервер при запуске игры</span>
         </div>
-        <button class="toggle" :class="{ on: autoConnect }" @click="autoConnect = !autoConnect">
+        <button class="toggle" role="switch" :aria-checked="autoConnect" aria-label="Автоподключение к lemicraft.ru" :class="{ on: autoConnect }" @click="autoConnect = !autoConnect">
           <span class="knob"></span>
         </button>
       </div>
@@ -414,7 +457,7 @@ onUnmounted(() => {
           <span class="row-title">Показывать окно с логами</span>
           <span class="row-sub">Открывать окно логов игры автоматически при запуске</span>
         </div>
-        <button class="toggle" :class="{ on: showLogs }" @click="showLogs = !showLogs">
+        <button class="toggle" role="switch" :aria-checked="showLogs" aria-label="Показывать окно с логами" :class="{ on: showLogs }" @click="showLogs = !showLogs">
           <span class="knob"></span>
         </button>
       </div>
@@ -423,7 +466,7 @@ onUnmounted(() => {
           <span class="row-title">Анализатор крашей</span>
           <span class="row-sub">Открывать окно логов, если игра завершилась аварийно</span>
         </div>
-        <button class="toggle" :class="{ on: crashAnalyzer }" @click="crashAnalyzer = !crashAnalyzer">
+        <button class="toggle" role="switch" :aria-checked="crashAnalyzer" aria-label="Анализатор крашей" :class="{ on: crashAnalyzer }" @click="crashAnalyzer = !crashAnalyzer">
           <span class="knob"></span>
         </button>
       </div>
@@ -432,7 +475,7 @@ onUnmounted(() => {
           <span class="row-title">Discord Rich Presence</span>
           <span class="row-sub">Показывать в статусе Discord, что вы играете на LemiCraft</span>
         </div>
-        <button class="toggle" :class="{ on: discordRpc }" @click="discordRpc = !discordRpc">
+        <button class="toggle" role="switch" :aria-checked="discordRpc" aria-label="Discord Rich Presence" :class="{ on: discordRpc }" @click="discordRpc = !discordRpc">
           <span class="knob"></span>
         </button>
       </div>
@@ -441,27 +484,16 @@ onUnmounted(() => {
           <span class="row-title">Уведомления</span>
           <span class="row-sub">О новых новостях и о том, что сервер снова онлайн, пока лаунчер свёрнут</span>
         </div>
-        <button class="toggle" :class="{ on: notifications }" @click="notifications = !notifications">
+        <button class="toggle" role="switch" :aria-checked="notifications" aria-label="Уведомления" :class="{ on: notifications }" @click="notifications = !notifications">
           <span class="knob"></span>
         </button>
-      </div>
-      <div class="row">
-        <div class="row-text">
-          <span class="row-title">Проверка уведомлений (временно)</span>
-          <span class="row-sub">Показывает уведомления сразу, чтобы увидеть, как они выглядят</span>
-        </div>
-        <div class="notify-test">
-          <button v-for="(sample, i) in NOTIFY_SAMPLES" :key="i" class="browse-btn" @click="notify(sample[0], sample[1], true)">
-            {{ i === 0 ? 'Новость' : 'Сервер онлайн' }}
-          </button>
-        </div>
       </div>
       <div class="row">
         <div class="row-text">
           <span class="row-title">Запускать вместе с системой</span>
           <span class="row-sub">Лаунчер откроется свёрнутым при входе в систему</span>
         </div>
-        <button class="toggle" :class="{ on: autostart }" @click="toggleAutostart">
+        <button class="toggle" role="switch" :aria-checked="autostart" aria-label="Запускать вместе с системой" :class="{ on: autostart }" @click="toggleAutostart">
           <span class="knob"></span>
         </button>
       </div>
@@ -474,7 +506,7 @@ onUnmounted(() => {
           <span class="row-title">Подбор подключения</span>
           <Transition name="sub" mode="out-in"><span :key="entrySummary" class="row-sub">{{ entrySummary }}</span></Transition>
         </div>
-        <button class="browse-btn" @click="entryModalOpen = true">Подробнее</button>
+        <button class="browse-btn" @click="entryModalOpen = true">Открыть</button>
       </div>
     </section>
 
@@ -485,7 +517,7 @@ onUnmounted(() => {
           <span class="row-title">Полупрозрачный фон</span>
           <span class="row-sub">Размытый фон окна, сквозь который видны обои и окна позади</span>
         </div>
-        <button class="toggle" :class="{ on: translucent }" @click="translucent = !translucent">
+        <button class="toggle" role="switch" :aria-checked="translucent" aria-label="Полупрозрачный фон" :class="{ on: translucent }" @click="translucent = !translucent">
           <span class="knob"></span>
         </button>
       </div>
@@ -493,6 +525,13 @@ onUnmounted(() => {
 
     <section class="group">
       <h2>О лаунчере</h2>
+      <div class="row">
+        <div class="row-text">
+          <span class="row-title">Экскурсия по лаунчеру</span>
+          <span class="row-sub">Покажет, что где находится, и поможет войти, выбрать скин и запустить игру</span>
+        </div>
+        <button class="browse-btn" @click="startTour">Пройти заново</button>
+      </div>
       <div class="row">
         <div class="row-text">
           <span class="row-title">Версия</span>
@@ -686,12 +725,13 @@ onUnmounted(() => {
   width: 100%;
   flex: 1;
   min-width: 0;
-  padding: 9px 12px;
+  padding: 0 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
   font-size: 13px;
+  min-height: 36px;
 }
 .text-input:focus {
   border-color: var(--accent);
@@ -719,15 +759,19 @@ onUnmounted(() => {
 
 .browse-btn {
   flex-shrink: 0;
-  padding: 9px 14px;
+  padding: 0 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .browse-btn:hover:not(:disabled) {
   background: var(--surface-hover);
@@ -749,9 +793,22 @@ onUnmounted(() => {
 }
 
 /* a hint that changes with the choice fades into the new text */
-.notify-test {
+/* a menu whose items carry a note is as wide as its widest item, and no item breaks into two lines */
+.dropdown-menu.wide {
+  min-width: max-content;
+}
+.dropdown-menu.wide .dropdown-item {
   display: flex;
-  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  white-space: nowrap;
+}
+.profile-rec {
+  margin-left: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-faint);
 }
 .sub-enter-active {
   transition: opacity 0.24s ease, transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -782,6 +839,7 @@ onUnmounted(() => {
 
 .ram-control input[type='range'] {
   width: 140px;
+  height: 24px;
   accent-color: var(--accent);
 }
 .ram-control input[type='range']::-webkit-slider-thumb {
@@ -815,8 +873,8 @@ onUnmounted(() => {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 9px 14px;
-  border-radius: 9px;
+  padding: 0 14px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
@@ -826,6 +884,7 @@ onUnmounted(() => {
   white-space: nowrap;
   overflow: hidden;
   transition: background 0.15s ease, width 0.22s ease;
+  min-height: 36px;
 }
 .dropdown-trigger:hover {
   background: var(--surface-hover);

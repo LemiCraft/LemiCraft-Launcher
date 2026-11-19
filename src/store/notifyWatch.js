@@ -17,6 +17,21 @@ export async function notify(title, body, force = false) {
   }
 }
 
+export async function notifyNews(post, force = false) {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('show_news_toast', {
+      id: String(post.id),
+      title: post.author || 'Новость LemiCraft',
+      body: String(post.title ?? '').slice(0, 140),
+      pictureUrl: post.imageUrl ?? null,
+      force,
+    });
+  } catch (err) {
+    console.error('failed to show the news notification:', err);
+  }
+}
+
 function remembered() {
   try {
     return JSON.parse(localStorage.getItem(LAST_NEWS_KEY) ?? 'null');
@@ -46,7 +61,7 @@ export function startNotifyWatcher() {
       const last = remembered();
       const at = Date.parse(top.rawDate) || 0;
       // newer than the last one seen, not merely another one (a deleted post moves an older one to the top)
-      if (last && last.id !== top.id && at > last.at) notify('Новость LemiCraft', String(top.title ?? '').slice(0, 140));
+      if (last && last.id !== top.id && at > last.at) notifyNews(top);
       if (!last || at >= last.at) remember(top);
     },
     { immediate: true },

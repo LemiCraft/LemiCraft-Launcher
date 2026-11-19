@@ -117,6 +117,7 @@ dependencies = [
  "tauri-plugin-prevent-default",
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
+ "tauri-winrt-notification",
  "tokio",
  "uuid 1.29.0",
  "windows",

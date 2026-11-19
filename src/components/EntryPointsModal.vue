@@ -1,10 +1,13 @@
 <script setup>
+import { useFocusTrap } from '../composables/useFocusTrap.js';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { entryPoints, entryState, initEntryPoints, runEntryProbe } from '../store/entryPoints.js';
 import { copyText } from '../utils/clipboard.js';
 import { pushNotification } from '../store/notifications.js';
 
 const open = defineModel({ type: Boolean, default: false });
+const dialogEl = ref(null);
+useFocusTrap(dialogEl, open);
 
 const shaking = ref(false);
 let shakeTimer = null;
@@ -97,7 +100,7 @@ function checkedText(probe) {
   const when = minutes < 1 ? 'Проверено только что' : `Проверено ${minutes} мин назад`;
   // how many checks the verdict rests on
   const runs = Math.max(0, ...probe.points.map((p) => p.runs));
-  return `${when} · проверок в истории: ${runs}`;
+  return `${when} · В истории: ${runs}`;
 }
 
 const verdict = computed(() => {
@@ -131,7 +134,7 @@ const progressKnown = computed(() => entryPoints.progress.total > 0);
   <Teleport to="body">
     <Transition name="modal">
       <div v-if="open" class="overlay" @click.self="close()">
-        <div class="entry-modal" :class="{ shaking }" role="dialog" aria-modal="true" aria-labelledby="entry-modal-title">
+        <div ref="dialogEl" class="entry-modal" :class="{ shaking }" role="dialog" aria-modal="true" aria-labelledby="entry-modal-title">
           <div class="progress" :class="{ on: entryPoints.checking, known: entryPoints.checking && progressKnown }" :style="progressStyle"></div>
           <button class="close-btn" aria-label="Закрыть" @click="close(true)">
             <svg viewBox="0 0 10 10" width="11" height="11"><path d="M0.5 0.5 9.5 9.5M9.5 0.5 0.5 9.5" stroke="currentColor" stroke-width="1.3" /></svg>
@@ -202,10 +205,13 @@ const progressKnown = computed(() => entryPoints.progress.total > 0);
 
           <div class="footer">
             <Transition name="swap" mode="out-in">
-              <span :key="entryPoints.checking ? 'running' : 'idle'" class="checked">{{ footerText }}</span>
+              <span :key="entryPoints.checking ? 'running' : 'idle'" class="checked">
+                <span class="checked-main">{{ footerText.split(' · ')[0] }}</span>
+                <span v-if="footerText.includes(' · ')" class="checked-more">{{ footerText.split(' · ')[1] }}</span>
+              </span>
             </Transition>
             <div class="buttons">
-              <button class="check-btn" :disabled="entryPoints.checking" title="Около 5 секунд" @click="runEntryProbe('quick')">Быстрая проверка</button>
+              <button class="check-btn primary" :disabled="entryPoints.checking" title="Около 5 секунд" @click="runEntryProbe('quick')">Быстрая</button>
               <button class="check-btn" :disabled="entryPoints.checking" title="Около 30 секунд, точнее" @click="runEntryProbe('deep')">Подробная</button>
             </div>
           </div>
@@ -499,8 +505,19 @@ h2 {
   margin-top: 6px;
   min-height: 36px;
 }
+/* the status takes two lines on purpose: when it was checked, and what the verdict rests on */
 .checked {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.checked-main {
   font-size: 12.5px;
+  color: var(--text-muted);
+}
+.checked-more {
+  font-size: 12px;
   color: var(--text-faint);
 }
 
@@ -510,7 +527,9 @@ h2 {
 }
 
 .check-btn {
-  padding: 9px 16px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 0 18px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: transparent;
@@ -519,9 +538,13 @@ h2 {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, opacity 0.2s ease;
+  min-height: 36px;
+}
+.check-btn.primary {
+  background: var(--surface-2);
 }
 .check-btn:hover:not(:disabled) {
-  background: var(--surface-2);
+  background: var(--surface-hover);
 }
 .check-btn:disabled {
   opacity: 0.5;
@@ -540,10 +563,10 @@ h2 {
 
 .close-btn {
   position: absolute;
-  top: 14px;
-  right: 14px;
-  width: 26px;
-  height: 26px;
+  top: 13px;
+  right: 13px;
+  width: 28px;
+  height: 28px;
   border-radius: 7px;
   border: none;
   background: transparent;

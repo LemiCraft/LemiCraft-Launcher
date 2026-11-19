@@ -21,7 +21,11 @@ function onScroll() {
   topFaded.value = el.scrollTop > (cover ? cover.offsetHeight - 8 : 4);
   bottomFaded.value = el.scrollTop + el.clientHeight < el.scrollHeight - 4;
 }
-onMounted(() => nextTick(onScroll));
+onMounted(() => {
+  nextTick(onScroll);
+  // a picture that was already there has loaded before the listener could hear it
+  scrollEl.value?.querySelectorAll('img.fade-img').forEach((img) => img.complete && img.classList.add('ready'));
+});
 
 const blocks = computed(() => parseBlocks(props.item.content, props.item.title).map((b) => ({
   ...b,
@@ -55,7 +59,7 @@ async function openExternal(target) {
 
       <div class="modal-scroll" ref="scrollEl" @scroll="onScroll">
         <div v-if="item.imageUrl" class="cover">
-          <img :src="item.imageUrl" alt="" />
+          <img class="fade-img" :src="item.imageUrl" alt="" @load="$event.target.classList.add('ready')" />
         </div>
 
         <div class="body">
@@ -78,7 +82,7 @@ async function openExternal(target) {
 
           <div class="author-row">
             <div class="avatar" v-if="item.authorAvatarUrl">
-              <img :src="item.authorAvatarUrl" alt="" />
+              <img class="fade-img" :src="item.authorAvatarUrl" alt="" @load="$event.target.classList.add('ready')" />
             </div>
             <div class="avatar avatar-fallback" v-else>{{ (item.author || '?').charAt(0) }}</div>
             <div class="author-text">
@@ -200,6 +204,21 @@ async function openExternal(target) {
   overflow-y: auto;
   overflow-x: hidden;
   border-radius: var(--radius-lg);
+}
+
+/* a picture comes in when it has loaded, over the colour of its place, instead of appearing in one go */
+.fade-img {
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.fade-img.ready {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-img {
+    opacity: 1;
+    transition: none;
+  }
 }
 
 .cover {
@@ -336,7 +355,7 @@ async function openExternal(target) {
   color: var(--text);
 }
 .author-role {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-faint);
 }
 

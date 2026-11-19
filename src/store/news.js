@@ -10,6 +10,8 @@ export const newsState = reactive({
   error: false,
   hasMore: false,
   lastId: null,
+  // a post to open as soon as the feed shows (a click on its notification)
+  pendingOpenId: null,
 });
 
 const CACHE_TTL_MS = 2 * 60 * 1000;

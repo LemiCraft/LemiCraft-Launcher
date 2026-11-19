@@ -238,7 +238,7 @@ onBeforeUnmount(() => {
       <h1>{{ isOther ? 'Профиль игрока' : 'Профиль' }}</h1>
       <button class="refresh" :disabled="view.loading" @click="reload(true)">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z" /></svg>
-        {{ view.loading ? 'Обновляю...' : 'Обновить' }}
+        <span class="label-slot"><Transition name="label-swap" mode="out-in"><span :key="view.loading">{{ view.loading ? 'Обновляю...' : 'Обновить' }}</span></Transition></span>
       </button>
     </div>
 
@@ -336,7 +336,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-        <section v-if="!isOther" class="card stats">
+        <section v-if="!isOther || stats" class="card stats">
           <h3>Статистика</h3>
           <div class="grid">
             <div v-for="(cell, index) in cells" :key="cell.id" class="cell">
@@ -390,8 +390,33 @@ onBeforeUnmount(() => {
   font-weight: 800;
   color: var(--text);
 }
+/* the label of a button that changes: the old word fades out, the new one comes in, the button does not jump */
+.label-swap-enter-active {
+  transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.label-swap-leave-active {
+  transition: opacity 0.1s ease;
+}
+.label-swap-enter-from {
+  opacity: 0;
+  transform: translateY(3px);
+}
+.label-swap-leave-to {
+  opacity: 0;
+}
+.label-slot {
+  display: inline-block;
+  min-width: 78px;
+  text-align: left;
+}
+@media (prefers-reduced-motion: reduce) {
+  .label-swap-enter-active,
+  .label-swap-leave-active {
+    transition: none;
+  }
+}
 .refresh {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   background: none;
@@ -401,6 +426,9 @@ onBeforeUnmount(() => {
   font-weight: 500;
   cursor: pointer;
   transition: color 0.15s ease;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
 }
 .refresh:hover:not(:disabled) {
   color: var(--text);
@@ -518,7 +546,7 @@ onBeforeUnmount(() => {
   transform: none;
 }
 .skin-hint {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-faint);
 }
 
@@ -529,7 +557,7 @@ onBeforeUnmount(() => {
   padding: 20px 22px;
 }
 .nick {
-  font-size: 32px;
+  font-size: 36px;
   font-weight: 800;
   line-height: 1.1;
   color: var(--text);
@@ -571,7 +599,7 @@ onBeforeUnmount(() => {
   border-top: 1px solid var(--border);
 }
 .label {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -755,14 +783,14 @@ onBeforeUnmount(() => {
 }
 .state-detail {
   max-width: 420px;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-faint);
   overflow-wrap: anywhere;
 }
 .retry {
   margin-top: 6px;
-  padding: 9px 20px;
-  border-radius: 10px;
+  padding: 0 18px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
@@ -770,6 +798,7 @@ onBeforeUnmount(() => {
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease, opacity 0.15s ease;
+  min-height: 36px;
 }
 .retry:hover:not(:disabled) {
   background: var(--surface);

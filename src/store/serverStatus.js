@@ -10,6 +10,8 @@ export const serverStatus = reactive({
   version: '',
   ping: null,
   playersSample: [],
+  // a check asked for by the player (a click on the ping)
+  checking: false,
 });
 
 let pollTimer = null;
@@ -44,6 +46,21 @@ export async function fetchServerStatus() {
     serverStatus.online = false;
   } finally {
     serverStatus.loaded = true;
+  }
+}
+
+// A click on the ping: asks again, and shows for a moment that it did (a reply in a tenth of a second would pass unseen)
+const MIN_CHECK_SHOWN_MS = 700;
+export async function recheckServerStatus() {
+  if (serverStatus.checking) return;
+  serverStatus.checking = true;
+  const started = Date.now();
+  try {
+    await fetchServerStatus();
+  } finally {
+    const left = MIN_CHECK_SHOWN_MS - (Date.now() - started);
+    if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
+    serverStatus.checking = false;
   }
 }
 

@@ -179,9 +179,8 @@ fn client() -> Result<reqwest::blocking::Client, String> {
 }
 
 // None: the site has no launcher endpoint for the profile yet
-fn from_launcher_endpoint(client: &reqwest::blocking::Client) -> Result<Option<Profile>, String> {
-    let url = launcher_profile_url();
-    let res = crate::site_auth::send_authed(client, || client.get(&url))?;
+fn from_launcher_endpoint(client: &reqwest::blocking::Client, url: &str) -> Result<Option<Profile>, String> {
+    let res = crate::site_auth::send_authed(client, || client.get(url))?;
     let status = res.status();
     match classify(status.as_u16()) {
         Answer::Profile => {
@@ -226,7 +225,7 @@ pub async fn get_profile() -> Result<Profile, String> {
     tauri::async_runtime::spawn_blocking(|| {
         let (uuid, nick) = crate::auth::current_identity().ok_or("Войдите в аккаунт")?;
         let client = client()?;
-        let profile = match from_launcher_endpoint(&client)? {
+        let profile = match from_launcher_endpoint(&client, &launcher_profile_url())? {
             Some(profile) => profile,
             None => from_public_data(&client, &nick)?,
         };
@@ -247,7 +246,18 @@ pub async fn get_player_profile(nick: String) -> Result<Profile, String> {
     if !valid_nick(&nick) {
         return Err("Игрок не найден".to_string());
     }
-    tauri::async_runtime::spawn_blocking(move || from_public_data(&client()?, &nick)).await.map_err(|err| err.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = client()?;
+        // the site gives the statistics of another player to a signed-in player; without that (a guest, an old
+        // site, a failed call) the public data is shown, and a player that is not on the list is told so
+        match from_launcher_endpoint(&client, &format!("{}/players/{}/profile", launcher_profile_url().trim_end_matches("/profile"), nick)) {
+            Ok(Some(profile)) => Ok(profile),
+            Err(err) if err.contains("белом списке") => Err(err),
+            _ => from_public_data(&client, &nick),
+        }
+    })
+    .await
+    .map_err(|err| err.to_string())?
 }
 
 fn online_from_stats(stats: &serde_json::Value) -> Vec<String> {
@@ -305,6 +315,15 @@ mod tests {
         let profile = parse_launcher_answer(body.as_bytes()).unwrap();
         assert_eq!((profile.playtime_rank, profile.last_seen.as_deref()), (Some(42), Some("2026-11-04T16:50:23.354Z")));
         assert_eq!(profile.stats.unwrap().ping, Some(95.0));
+    }
+
+    #[test]
+    fn the_answer_for_another_player_has_no_active_playtime_and_still_reads() {
+        let body = r##"{"success":true,"nick":"KOTOKOPOLb","uuid":"d0a8b3c2-1f4e-4a77-9c1e-5b6f2e8a9d10","banned":false,"banReason":null,"banPermanent":false,"banEndsAt":null,"online":false,"lastSeen":"2026-11-05T09:12:00.000Z","playtimeRank":3,"roles":[{"id":"1234567890","name":"Администратор","emoji":"1f451","colors":["#ff5f5f","#ff9a5f"]}],"stats":{"registered":"2026-02-24T10:00:00.000Z","lastLogin":"2026-11-05T09:12:00.000Z","playtime":893400000,"activePlaytime":null,"sessions":1180,"deaths":34,"mobKills":5120,"playerKills":7,"ping":48}}"##;
+        let profile = parse_launcher_answer(body.as_bytes()).unwrap();
+        let stats = profile.stats.unwrap();
+        assert_eq!((stats.active_playtime, stats.playtime, stats.sessions, stats.ping), (None, Some(893_400_000), Some(1180), Some(48.0)));
+        assert!(profile.complete);
     }
 
     #[test]

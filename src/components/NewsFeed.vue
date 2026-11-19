@@ -31,6 +31,12 @@ function excerptTokens(text, mentions) {
   return parseInline(replaceDiscordTimestamps(text || ''), mentions);
 }
 
+const FRESH_MS = 24 * 3600 * 1000;
+function isFresh(item) {
+  const published = Date.parse(item.rawDate);
+  return Number.isFinite(published) && Date.now() - published < FRESH_MS;
+}
+
 function cardTitle(title) {
   return title && title.length > 500 ? `${title.slice(0, 500)}...` : title;
 }
@@ -57,6 +63,20 @@ watch(
   },
 );
 
+// The post of a clicked notification opens as soon as the feed has it
+watch(
+  () => [newsState.pendingOpenId, newsState.items.length],
+  () => {
+    const id = newsState.pendingOpenId;
+    if (!id) return;
+    const item = newsState.items.find((candidate) => String(candidate.id) === id);
+    if (!item) return;
+    newsState.pendingOpenId = null;
+    openItem.value = item;
+  },
+  { immediate: true },
+);
+
 // Also on mount: a list that is already loaded would not trigger the watcher above
 // Asked again every few minutes while open: a new post slides in at the top, a failed check is silent
 const CHECK_EVERY_MS = 5 * 60 * 1000;
@@ -80,7 +100,7 @@ onBeforeUnmount(() => clearInterval(checkTimer));
       <h2>Новости</h2>
       <button class="refresh" :disabled="refreshing || newsState.loading" @click="onRefresh">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z"/></svg>
-        {{ refreshing || newsState.loading ? 'Обновляю...' : 'Обновить' }}
+        <span class="label-slot"><Transition name="label-swap" mode="out-in"><span :key="refreshing || newsState.loading">{{ refreshing || newsState.loading ? 'Обновляю...' : 'Обновить' }}</span></Transition></span>
       </button>
     </div>
 
@@ -114,13 +134,11 @@ onBeforeUnmount(() => clearInterval(checkTimer));
             >
               <div class="news-author">
                 <div class="author-avatar" v-if="item.authorAvatarUrl">
-                  <img :src="item.authorAvatarUrl" alt="" loading="lazy" />
+                  <img class="fade-img" :src="item.authorAvatarUrl" alt="" loading="lazy" @load="$event.target.classList.add('ready')" />
                 </div>
                 <div class="author-avatar author-avatar-fallback" v-else>{{ (item.author || '?').charAt(0) }}</div>
-                <div class="author-info">
-                  <span class="author-name">{{ item.author }}</span>
-                  <span class="date">{{ item.date }}</span>
-                </div>
+                <span class="author-name">{{ item.author }}</span>
+                <span v-if="isFresh(item)" class="fresh">Новое</span>
                 <span class="tag" :data-tag="item.tag">{{ item.tag }}</span>
               </div>
               <h3>
@@ -139,6 +157,7 @@ onBeforeUnmount(() => clearInterval(checkTimer));
                   <template v-else>{{ t.text }}</template>
                 </template>
               </p>
+              <span class="date news-date">{{ item.date }}</span>
             </article>
           </TransitionGroup>
         </Transition>
@@ -182,8 +201,33 @@ onBeforeUnmount(() => clearInterval(checkTimer));
   color: var(--text);
 }
 
+/* the label of a button that changes: the old word fades out, the new one comes in, the button does not jump */
+.label-swap-enter-active {
+  transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.label-swap-leave-active {
+  transition: opacity 0.1s ease;
+}
+.label-swap-enter-from {
+  opacity: 0;
+  transform: translateY(3px);
+}
+.label-swap-leave-to {
+  opacity: 0;
+}
+.label-slot {
+  display: inline-block;
+  min-width: 78px;
+  text-align: left;
+}
+@media (prefers-reduced-motion: reduce) {
+  .label-swap-enter-active,
+  .label-swap-leave-active {
+    transition: none;
+  }
+}
 .refresh {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   background: none;
@@ -192,9 +236,10 @@ onBeforeUnmount(() => clearInterval(checkTimer));
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  padding: 6px 8px;
+  padding: 0 10px;
   border-radius: 8px;
   transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+  min-height: 28px;
 }
 .refresh:hover {
   background: var(--surface-2);
@@ -455,6 +500,21 @@ onBeforeUnmount(() => clearInterval(checkTimer));
   border-radius: 50%;
   background: var(--surface-2);
 }
+/* a picture comes in when it has loaded, over the colour of its place, instead of appearing in one go */
+.fade-img {
+  opacity: 0;
+  transition: opacity 0.45s ease;
+}
+.fade-img.ready {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fade-img {
+    opacity: 1;
+    transition: none;
+  }
+}
+
 .author-avatar img {
   display: block;
   width: 100%;
@@ -469,21 +529,27 @@ onBeforeUnmount(() => clearInterval(checkTimer));
   font-size: 11px;
   font-weight: 700;
 }
-.author-info {
-  display: flex;
-  align-items: baseline;
-  gap: 7px;
-  min-width: 0;
-}
-.author-info .date::before {
-  content: '·';
-  margin-right: 7px;
-  color: var(--text-faint);
-}
-.author-info .date {
+.fresh {
   flex-shrink: 0;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-text-on);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+/* the date is the foot of the card, so the name has the whole line */
+.news-card {
+  display: flex;
+  flex-direction: column;
+}
+.news-date {
+  margin-top: auto;
+  padding-top: 10px;
 }
 .author-name {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   color: var(--text);

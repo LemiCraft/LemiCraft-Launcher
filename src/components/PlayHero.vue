@@ -71,7 +71,7 @@ function chooseHeroTitle(hour = new Date().getHours(), random = Math.random) {
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { accountStore } from '../store/account.js';
-import { serverStatus, startServerStatusPolling } from '../store/serverStatus.js';
+import { serverStatus, startServerStatusPolling, recheckServerStatus } from '../store/serverStatus.js';
 import { installState, startInstallListeners, launchGame, refreshInstalledState } from '../store/installProgress.js';
 import { modsState } from '../store/mods.js';
 import { startProviderStatusWatcher } from '../store/providerStatus.js';
@@ -199,6 +199,7 @@ onUnmounted(() => {
 
       <button
         class="play-btn"
+        data-tour="play"
         :class="{ running: installState.isGameRunning }"
         :disabled="installState.isInstalling || installState.isGameRunning || modsState.applying || !accountStore.loggedIn"
         :title="modsState.applying ? 'Дождитесь завершения установки модов' : accountStore.checking ? 'Проверяю аккаунт' : !accountStore.loggedIn ? 'Сначала войдите в аккаунт' : ''"
@@ -226,7 +227,7 @@ onUnmounted(() => {
 
       <Transition name="chips" mode="out-in">
         <div v-if="serverStatus.loaded && serverStatus.online" key="online" class="chips">
-          <span class="online-wrap" @mouseenter="showOnline" @mouseleave="hideOnlineSoon">
+          <span class="online-wrap" data-tour="online" @mouseenter="showOnline" @mouseleave="hideOnlineSoon">
           <button type="button" class="chip online-chip" :aria-expanded="onlineOpen" aria-haspopup="true" @click="toggleOnline" @keydown.esc="onlineOpen = false">
             <span class="online-dot"></span>
             <!-- a number that changes is cross-faded in its own place, so the chip does not twitch -->
@@ -272,14 +273,19 @@ onUnmounted(() => {
             </div>
           </Transition>
           </span>
-          <span class="chip mono">
-            <span class="ping-dot" :class="pingQuality(serverStatus.ping)"></span>
-            <span class="swap-slot">
-              <Transition name="chip-swap">
-                <span :key="serverStatus.ping" class="swap-item">{{ serverStatus.ping }}</span>
-              </Transition>
-            </span>
-            мс
+          <span class="ping-wrap">
+            <button type="button" class="chip mono ping-chip" :class="{ checking: serverStatus.checking }" aria-label="Проверить пинг заново" @click="recheckServerStatus">
+              <span class="ping-dot" :class="[pingQuality(serverStatus.ping), { checking: serverStatus.checking }]"></span>
+              <span class="swap-slot">
+                <Transition name="chip-swap">
+                  <span :key="serverStatus.ping" class="swap-item">{{ serverStatus.ping }}</span>
+                </Transition>
+              </span>
+              мс
+              <svg class="ping-redo" viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z" /></svg>
+            </button>
+            <!-- the hint: a small note over the chip, not the system tooltip, which appears under the pointer -->
+            <span class="ping-hint">Нажмите, чтобы проверить заново</span>
           </span>
           <span class="chip">
             <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 2 2 7l10 5 10-5-10-5Zm0 8.5L4.5 7 12 3.5 19.5 7 12 10.5ZM4 9.5v6.7L12 20l8-3.8V9.5l-8 4-8-4Z"/></svg>
@@ -530,7 +536,7 @@ h1 {
 }
 .online-pop-head {
   padding: 0 4px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -699,6 +705,84 @@ h1 {
   line-height: 1;
 }
 
+.ping-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.ping-chip {
+  cursor: pointer;
+  font-family: var(--font-mono);
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.ping-chip:hover,
+.ping-chip:focus-visible {
+  background: rgba(0, 0, 0, 0.55);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+/* the arrow is there only while the pointer is, and it turns while the check is running */
+.ping-redo {
+  width: 0;
+  margin-left: -6px;
+  opacity: 0;
+  transition: width 0.2s ease, margin 0.2s ease, opacity 0.2s ease;
+}
+.ping-chip:hover .ping-redo,
+.ping-chip:focus-visible .ping-redo,
+.ping-chip.checking .ping-redo {
+  width: 12px;
+  margin-left: 0;
+  opacity: 0.8;
+}
+.ping-chip.checking .ping-redo {
+  animation: ping-turn 0.8s linear infinite;
+}
+@keyframes ping-turn {
+  to { transform: rotate(360deg); }
+}
+.ping-dot.checking {
+  animation: ping-pulse 0.9s ease-in-out infinite;
+}
+@keyframes ping-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+.ping-hint {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translate(-50%, 4px);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(17, 18, 22, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease, transform 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* a moment after the pointer arrives, so that it does not flash when the pointer only passes by */
+.ping-wrap:hover .ping-hint {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  transition-delay: 0.5s;
+}
+.ping-wrap:has(.checking) .ping-hint {
+  opacity: 0;
+  transition-delay: 0s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ping-redo,
+  .ping-hint {
+    transition: none;
+  }
+  .ping-chip.checking .ping-redo,
+  .ping-dot.checking {
+    animation: none;
+  }
+}
 .ping-dot {
   width: 6px;
   height: 6px;

@@ -26,6 +26,9 @@ struct NewsApiItem {
     image_url: Option<String>,
     #[serde(rename = "authorName")]
     author_name: String,
+    /// The game nickname of the author, when the site knows whose Discord account it is
+    #[serde(rename = "authorNick", default)]
+    author_nick: Option<String>,
     #[serde(rename = "authorRole")]
     author_role: Option<String>,
     #[serde(rename = "authorAvatarUrl")]
@@ -182,7 +185,8 @@ async fn get_news_live(before: Option<String>) -> Result<NewsPage, String> {
                 content,
                 excerpt,
                 image_url: item.image_url,
-                author: item.author_name,
+                // the game nickname when there is one, the Discord name otherwise
+                author: item.author_nick.filter(|nick| !nick.trim().is_empty()).unwrap_or(item.author_name),
                 author_role: item.author_role.unwrap_or_default(),
                 author_avatar_url: item.author_avatar_url,
                 date: item.published_at,

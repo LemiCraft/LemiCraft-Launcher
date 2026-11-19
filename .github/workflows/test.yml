@@ -60,6 +60,8 @@ jobs:
       - run: npm ci
       # The Rust build reads the built frontend (frontendDist), so it must exist before cargo runs
       - run: npm run build
+      # The tests of the interface (formatting, profiles of Java, the merge of the news): fast, no browser needed
+      - run: npm test
       # Tests that need the internet are marked #[ignore] and stay out of this run
       - name: Rust tests
         working-directory: src-tauri

@@ -22,6 +22,9 @@ import { checkForUpdate } from './store/update.js';
 import { modsState, startModsProgressListener, startDeepLinkListener } from './store/mods.js';
 import { startViolationsWatcher } from './store/violations.js';
 import { startNotifyWatcher } from './store/notifyWatch.js';
+import TourOverlay from './components/TourOverlay.vue';
+import { startTourOnFirstRun } from './store/tour.js';
+import { newsState } from './store/news.js';
 
 const isLogsWindow = ref(false);
 const windowResolved = ref(!window.__TAURI_INTERNALS__);
@@ -90,6 +93,24 @@ onMounted(async () => {
     startDeepLinkListener();
     startViolationsWatcher();
     startNotifyWatcher();
+    // the walk through the launcher begins by itself on the very first start, when the account has been looked at
+    let tourScheduled = false;
+    watch(
+      () => accountStore.checking,
+      (checking) => {
+        if (checking || tourScheduled) return;
+        tourScheduled = true;
+        setTimeout(startTourOnFirstRun, 1200);
+      },
+      { immediate: true },
+    );
+    // a click on the notification of a post: the news page, with the post open
+    import('@tauri-apps/api/event').then(({ listen }) =>
+      listen('open-news', (event) => {
+        newsState.pendingOpenId = String(event.payload);
+        active.value = 'home';
+      }),
+    );
     syncDiscordPage(active.value);
   }
 });
@@ -131,6 +152,7 @@ onMounted(async () => {
       <UpdateModal />
       <ConfirmDialog />
       <LoginOverlay />
+      <TourOverlay @navigate="active = $event" />
       <Transition name="dim">
         <div v-if="skinsState.elybyLoginPending" class="login-dim"></div>
       </Transition>

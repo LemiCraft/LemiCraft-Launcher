@@ -6,6 +6,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/github/v/release/LemiCraft/LemiCraft-Launcher" alt="version"/>
+  <a href="https://github.com/LemiCraft/LemiCraft-Launcher/actions/workflows/test.yml"><img src="https://github.com/LemiCraft/LemiCraft-Launcher/actions/workflows/test.yml/badge.svg" alt="Tests"/></a>
   <img src="https://img.shields.io/github/license/LemiCraft/LemiCraft-Launcher" alt="license"/>
   <img src="https://img.shields.io/badge/Tauri-2-24C8DB" alt="Tauri 2"/>
   <img src="https://img.shields.io/badge/Vue-3-42b883" alt="Vue 3"/>
@@ -18,10 +19,12 @@
 
 - 🎮 **Автоматическая установка** Minecraft (Fabric) и модов, с прогресс-баром и докачкой при сбоях
 - 🔐 **Авторизация** через Microsoft и Ely.by с поддержкой authlib-injector
-- 🧩 **Менеджер модов** - каталог с индивидуальными переключателями, официальная сборка LemiSborka, импорт по коду или через ссылку `lemicraft://`
-- 📰 **Новости** и обновления прямо в лаунчере
+- 🧩 **Менеджер модов** - каталог, официальная сборка LemiSborka, импорт по коду и наборы Modrinth (`.mrpack`)
+- 📰 **Новости** прямо в лаунчере, с уведомлением о новых постах
 - ⚙️ **Гибкие настройки** Java, RAM, пути установки
-- 📊 **Мониторинг** статуса сервера в реальном времени
+- 📊 **Мониторинг** статуса сервера в реальном времени: пинг, версия, кто онлайн
+- 🧭 **Подбор подключения** - проверка путей до сервера и выбор лучшего
+- 👥 **Профиль** игрока: свой и других игроков, со статистикой
 - 🎨 **Современный UI** с тёмной темой и плавными анимациями, по желанию с полупрозрачным окном (Mica/Acrylic на Windows 11, vibrancy на macOS)
 - 👤 **Скины** - 3D-превью, загрузка, применение и удаление
 - 🛡️ **Анализатор крашей** - при аварийном закрытии Minecraft предлагает открыть лог
@@ -48,6 +51,9 @@
 
 - установщик `LemiCraft-Launcher-*-installer.exe` (рекомендуется) - запустите и следуйте инструкциям
 - портативную версию `LemiCraft-Launcher-*-portable.exe` - запускается без установки, можно использовать с флешки
+
+> [!TIP]
+> Если Windows или антивирус при первом запуске предупреждает о неизвестном издателе, это ожидаемо: сборки пока не подписаны сертификатом. Скачивайте файлы только со страницы [Releases](../../releases/latest). В SmartScreen нажмите «Подробнее» - «Выполнить в любом случае»
 
 **Linux**
 
@@ -148,17 +154,23 @@ bash packaging/flatpak/build.sh путь/к/LemiCraft-Launcher.deb
 ```
 src/                   интерфейс (Vue 3)
   components/          экраны и элементы интерфейса
-  store/               состояние: аккаунт, моды, новости, обновления
+  store/               состояние: аккаунт, моды, новости, профиль, обновления
   composables/         общая логика (вход в аккаунт)
 src-tauri/src/         бэкенд (Rust)
   auth.rs, auth_ely.rs         вход через Microsoft и Ely.by
   game.rs                      установка и запуск Minecraft
-  mods.rs                      каталог модов, сборка LemiSborka, импорт по коду
+  mods.rs, mrpack.rs           каталог модов, сборка LemiSborka, импорт по коду и наборы Modrinth
   skin.rs, skin_elyby.rs       скины
+  profile.rs                   профиль игрока (свой и чужие)
+  entry_points.rs              подбор подключения к серверу
+  server_status.rs             статус и пинг сервера
+  notify.rs                    уведомления и автозапуск
+  http.rs                      один общий HTTP-клиент
   update.rs                    самообновление
   window_effect.rs             полупрозрачное окно
   config.rs                    адреса сервера и API, версия Minecraft
 packaging/flatpak/     пакет Flatpak
+packaging/macos/       фон и иконки образа macOS, сборка иконки
 scripts/               сборка под macOS
 ```
 

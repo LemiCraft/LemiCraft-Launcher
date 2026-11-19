@@ -1,6 +1,7 @@
 <script setup>
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { accountStore } from '../store/account.js';
+import { tourState } from '../store/tour.js';
 import {
   skinsState,
   loadSkins,
@@ -95,7 +96,25 @@ function resetPreview() {
   uploadPreviewUrl.value = '';
 }
 
+// the step of the skin in the guide: its button opens this dialog, and the guide waits until it is closed
+watch(
+  () => tourState.uploadRequests,
+  () => {
+    if (!accountStore.loggedIn) return;
+    tourState.paused = true;
+    tourState.uploadOpened = true;
+    openUploadModal();
+  },
+);
+watch(uploadModalOpen, (open) => {
+  if (!open && tourState.paused) tourState.paused = false;
+});
+
 function openUploadModal() {
+  if (tourState.open) {
+    tourState.paused = true;
+    tourState.uploadOpened = true;
+  }
   resetPreview();
   uploadFile.value = null;
   uploadName.value = '';
@@ -253,7 +272,7 @@ async function onConfirmElybyLogin() {
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z"/></svg>
           {{ refreshing ? 'Обновляю...' : 'Обновить' }}
         </button>
-        <button class="upload-btn" @click="openUploadModal">
+        <button class="upload-btn" data-tour="upload-skin" @click="openUploadModal">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 3l5 5h-3v6h-4V8H7l5-5Zm-7 14h14v2H5v-2Z"/></svg>
           Загрузить скин
         </button>
@@ -296,7 +315,8 @@ async function onConfirmElybyLogin() {
           <p v-else-if="feedState === 'error'" key="error" class="error-text standalone">{{ skinsState.error }}</p>
 
           <div v-else-if="skinsState.items.length === 0" key="empty" class="empty-state">
-            <p>Скинов пока нет — загрузите первый</p>
+            <p>Скинов пока нет. Загрузите файл со скином, и он появится здесь</p>
+            <button class="upload-btn empty-upload" @click="openUploadModal">Загрузить скин</button>
           </div>
 
           <TransitionGroup v-else key="content" name="card" tag="div" class="grid">
@@ -429,7 +449,7 @@ async function onConfirmElybyLogin() {
 }
 
 .refresh {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   background: none;
@@ -438,9 +458,10 @@ async function onConfirmElybyLogin() {
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  padding: 6px 8px;
+  padding: 0 10px;
   border-radius: 8px;
   transition: background 0.15s ease, color 0.15s ease;
+  min-height: 28px;
 }
 .refresh:hover:not(:disabled) {
   background: var(--surface-2);
@@ -451,20 +472,24 @@ async function onConfirmElybyLogin() {
   cursor: default;
 }
 
+.empty-upload {
+  margin: 14px auto 0;
+}
 .upload-btn {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 16px;
-  border-radius: 10px;
+  padding: 0 16px;
+  border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  font-size: 13.5px;
+  font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease;
   flex-shrink: 0;
+  min-height: 36px;
 }
 .upload-btn:hover:not(:disabled) {
   background: var(--surface-hover);
@@ -687,7 +712,7 @@ async function onConfirmElybyLogin() {
 }
 
 .skin-model {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-faint);
 }
 
@@ -839,7 +864,7 @@ async function onConfirmElybyLogin() {
 }
 
 .field-label {
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;

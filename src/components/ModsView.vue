@@ -389,8 +389,8 @@ watch(
 
         <section class="import-card">
           <div class="import-card-head">
-            <span class="section-title">Импорт по коду</span>
-            <button class="site-link" @click="openExternal('https://lemicraft.ru/mods')">Составить сборку на сайте</button>
+            <span class="section-title">Импорт сборки</span>
+            <button class="site-link" @click="openExternal('https://lemicraft.ru/mods')">Составить сборку на сайте <span aria-hidden="true">↗</span></button>
           </div>
           <div class="import-row">
             <input v-model="importCode" type="text" placeholder="Код сборки" spellcheck="false" @keyup.enter="onCheckCode" />
@@ -456,6 +456,7 @@ watch(
 
         <p v-if="modsState.error" class="error-text standalone">{{ modsState.error }}</p>
 
+        <h2 class="catalog-title">Каталог модов</h2>
         <div class="category-filter">
           <button v-for="cat in CATEGORIES" :key="cat.id" class="cat-btn" :class="{ active: activeCategory === cat.id }" @click="activeCategory = cat.id">
             {{ cat.label }}
@@ -496,7 +497,9 @@ watch(
             <p class="mod-desc">{{ entry.description }}</p>
           </article>
         </TransitionGroup>
-        <p v-if="filteredCatalog.length === 0 && !modsState.loading" class="empty-state">Пока пусто</p>
+        <p v-if="filteredCatalog.length === 0 && !modsState.loading && !modsState.error" class="empty-state">
+          {{ activeCategory === 'all' ? 'Каталог модов пока пуст' : 'В этой категории пока нет модов' }}
+        </p>
       </div>
 
     </div>
@@ -587,7 +590,7 @@ watch(
 }
 
 .refresh {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
   background: none;
@@ -596,9 +599,10 @@ watch(
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  padding: 6px 8px;
+  padding: 0 10px;
   border-radius: 8px;
   transition: background 0.15s ease, color 0.15s ease;
+  min-height: 28px;
 }
 .refresh:hover:not(:disabled) {
   background: var(--surface-2);
@@ -720,9 +724,15 @@ watch(
   }
 }
 
+.catalog-title {
+  margin: 22px 0 12px;
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--text);
+}
 .section-title {
   display: block;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -749,14 +759,20 @@ watch(
 }
 
 .site-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 0 8px;
+  margin-right: -8px;
+  border-radius: 8px;
   background: none;
   border: none;
-  color: var(--text-faint);
-  font-size: 11.5px;
+  color: var(--text-muted);
+  font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  padding: 2px 0;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 .site-link:hover {
   color: var(--accent);
@@ -770,12 +786,13 @@ watch(
 
 .import-row input {
   flex: 1;
-  padding: 9px 12px;
+  padding: 0 12px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text);
   font-size: 13px;
+  min-height: 36px;
 }
 .import-row input:focus {
   border-color: var(--accent);
@@ -783,7 +800,7 @@ watch(
 
 .secondary-btn {
   flex-shrink: 0;
-  padding: 9px 16px;
+  padding: 0 16px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
@@ -792,6 +809,10 @@ watch(
   font-weight: 600;
   cursor: pointer;
   transition: background 0.15s ease;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 .secondary-btn:hover:not(:disabled) {
   background: var(--surface-hover);
@@ -1123,7 +1144,7 @@ watch(
 }
 
 .mod-desc {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-muted);
   line-height: 1.4;
   display: -webkit-box;

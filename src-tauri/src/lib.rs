@@ -148,6 +148,8 @@ pub fn run() {
       app.handle().plugin(tauri_plugin_updater::Builder::new().build())?;
 
       discord_rpc::start(app.handle().clone());
+      #[cfg(windows)]
+      notify::register_app_identity(app.handle());
 
       // Built in code, not from tauri.conf.json: only platforms with a window backdrop get a transparent window
       let main_config = app.config().app.windows.iter().find(|w| w.label == "main").cloned().ok_or("в tauri.conf.json нет окна main")?;
@@ -192,6 +194,7 @@ pub fn run() {
       profile::get_profile,
       profile::get_cached_profile,
       notify::show_notification,
+      notify::show_news_toast,
       notify::get_autostart,
       notify::set_autostart,
       profile::get_player_profile,

@@ -1,5 +1,7 @@
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { tourState } from '../store/tour.js';
+import { useFocusTrap } from '../composables/useFocusTrap.js';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { accountStore } from '../store/account.js';
 import { useLogin } from '../composables/useLogin.js';
 import { updateState } from '../store/update.js';
@@ -73,16 +75,33 @@ function openViolation() {
 const displayName = computed(() => (accountStore.loggedIn ? accountStore.username : 'Гость'));
 const displayRank = computed(() => (accountStore.loggedIn ? accountStore.provider : 'Войти в аккаунт'));
 
-const { authError, loginMicrosoft, loginElyBy, logout } = useLogin();
+const { authError, loggingInProvider, loginMicrosoft, loginElyBy, logout } = useLogin();
 const menuOpen = ref(false);
 const loginChoiceOpen = ref(false);
+const loginChoiceEl = ref(null);
+useFocusTrap(loginChoiceEl, loginChoiceOpen);
 const accountWrapEl = ref(null);
 
 function toggleMenu() {
   menuOpen.value = !menuOpen.value;
 }
 
+watch(
+  () => tourState.loginRequests,
+  () => {
+    if (accountStore.loggedIn) return;
+    tourState.paused = true;
+    openLoginChoice();
+  },
+);
+// the choice or the login has ended without a login: the guide comes back to the same step
+watch([loginChoiceOpen, loggingInProvider], ([choice, logging]) => {
+  if (tourState.paused && !choice && !logging) tourState.paused = false;
+});
+
 function openLoginChoice() {
+  // pressed by the player on the lit button while the guide is open: the guide steps aside, as for its own button
+  if (tourState.open) tourState.paused = true;
   menuOpen.value = false;
   loginChoiceOpen.value = true;
 }
@@ -98,7 +117,16 @@ function openPersonalAccount() {
   menuOpen.value = false;
 }
 
+// the guide opens the menu of the account at the step of the login, and a click on its dimming must not close it
+watch(
+  () => tourState.accountMenu,
+  (open) => {
+    menuOpen.value = open;
+  },
+);
+
 function handleOutsideClick(event) {
+  if (tourState.open) return;
   if (menuOpen.value && accountWrapEl.value && !accountWrapEl.value.contains(event.target)) {
     menuOpen.value = false;
   }
@@ -191,6 +219,7 @@ const quickLinks = [
         v-for="item in items"
         :key="item.id"
         class="nav-item"
+        :data-tour="`nav-${item.id}`"
         :class="{ active: active === item.id }"
         @click="emit('navigate', item.id)"
       >
@@ -257,7 +286,7 @@ const quickLinks = [
               <div v-if="accountStore.checking" class="profile-avatar skeleton"></div>
               <div v-else class="profile-avatar guest-avatar" v-html="tintIcon(ghostIcon)"></div>
             </div>
-            <button class="menu-account-link guest-login-button" :disabled="accountStore.checking" @click="openLoginChoice">
+            <button class="menu-account-link guest-login-button" data-tour="login-btn" :disabled="accountStore.checking" @click="openLoginChoice">
               {{ accountStore.checking ? 'Проверяю...' : 'Войти' }}
             </button>
           </div>
@@ -288,7 +317,7 @@ const quickLinks = [
         role="presentation"
         @click.self="loginChoiceOpen = false"
       >
-          <section class="login-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="login-choice-title">
+          <section ref="loginChoiceEl" class="login-choice-dialog" role="dialog" aria-modal="true" aria-labelledby="login-choice-title">
             <button class="login-choice-close" aria-label="Закрыть" @click="loginChoiceOpen = false">×</button>
             <h2 id="login-choice-title">Войти в аккаунт</h2>
             <p>Выберите способ входа</p>
@@ -315,7 +344,7 @@ const quickLinks = [
         </div>
       </Transition>
 
-      <button class="account" @click="toggleMenu">
+      <button class="account" data-tour="account" @click="toggleMenu">
         <!-- the old and the new picture and text sit in the same place while they cross-fade, so nothing around them moves -->
         <div class="account-avatar-slot">
           <Transition name="account-fade">
@@ -501,7 +530,7 @@ const quickLinks = [
   color: var(--text);
 }
 .violation-banner-reason {
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--text-muted);
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -996,7 +1025,7 @@ const quickLinks = [
 
 .menu-error {
   padding: 6px 8px 0;
-  font-size: 11.5px;
+  font-size: 12px;
   color: var(--bad);
   overflow-wrap: anywhere;
 }

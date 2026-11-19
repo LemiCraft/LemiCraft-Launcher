@@ -41,7 +41,8 @@ function onClick() {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  padding: 9px 10px;
+  min-height: 36px;
+  padding: 0 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--surface-2);
