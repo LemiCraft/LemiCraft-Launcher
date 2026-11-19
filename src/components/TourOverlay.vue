@@ -35,8 +35,7 @@ function measure() {
   if (!same) rect.value = next;
 }
 
-// The page of a step comes in with its own animations, and the place moves while they run: the light follows it
-// for a while after the step begins, so that it ends on the place and not where the place was
+// The page animates in and the place moves, so the light follows it for a while
 let followFrame = 0;
 function follow(milliseconds = 1600) {
   cancelAnimationFrame(followFrame);
@@ -53,9 +52,13 @@ function goToStep() {
   nextTick(() => follow());
 }
 
+// a reopened guide must not flash the light at the old place
+watch(visible, (now) => {
+  if (now) rect.value = null;
+});
 watch(() => [tourState.open, tourState.step, tourState.paused], () => visible.value && goToStep(), { immediate: true });
 
-// The step of the login waits for the player: a login that has worked takes the guide to the next step by itself
+// A successful login moves the guide on
 watch(loggedIn, (now) => {
   if (now && tourState.open && step.value.task === 'login') nextTourStep();
 });
@@ -84,7 +87,7 @@ const cardStyle = computed(() => {
   }
 });
 
-// What the main button does: the steps with a task do the thing, the others go on
+// A task step's main button does the task, the others go on
 const mainButton = computed(() => {
   const task = step.value.task;
   if (isWelcome.value) return { label: 'Показать', run: nextTourStep };
@@ -107,7 +110,7 @@ const mainButton = computed(() => {
   return { label: isLast.value ? 'Закончить' : 'Дальше', run: nextTourStep };
 });
 
-// the menu of the account is open during the step of the login, and shut when it is over
+// the account menu is open during the login step
 watch(
   () => tourState.open && !tourState.paused && !!step.value.opensAccountMenu,
   (open) => {
@@ -116,8 +119,7 @@ watch(
   { immediate: true },
 );
 
-// The lit place of a step with a task takes the clicks of the player (the button that is lit is the one to press);
-// everything around it, and the whole screen at the other steps, is shut by the panels below
+// A task step lets clicks through the lit place only; the panels shut the rest (the whole screen at other steps)
 const passThrough = computed(() => !!step.value.task && !!rect.value);
 const shutters = computed(() => {
   const r = rect.value;
@@ -135,12 +137,12 @@ const shutters = computed(() => {
   ];
 });
 
-// The game started by the lit button of the last step: the guide has done its work
+// the game has started: the guide is done
 watch(() => installState.isInstalling, (now) => {
   if (now && tourState.open && step.value.task === 'play') finishTour();
 });
 
-// the steps with a task can be put off one by one
+// a task can be put off, except a login that is already done
 const canPutOff = computed(() => !!step.value.task && !(step.value.task === 'login' && loggedIn.value));
 
 function onKeydown(event) {
@@ -166,7 +168,7 @@ onBeforeUnmount(() => {
       <div class="spotlight" :class="{ none: !rect }" :style="spotlight"></div>
       <div v-for="(style, i) in shutters" :key="i" class="shutter" :style="style"></div>
 
-      <div class="card" :class="{ welcome: isWelcome }" :style="{ ...cardStyle, width: `${cardWidth}px` }">
+      <div class="card" aria-live="polite" :class="{ welcome: isWelcome }" :style="{ ...cardStyle, width: `${cardWidth}px` }">
         <button class="close" aria-label="Закрыть экскурсию" @click="finishTour">×</button>
 
         <Transition name="tour-text" mode="out-in">

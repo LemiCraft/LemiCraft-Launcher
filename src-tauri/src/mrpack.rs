@@ -305,9 +305,54 @@ trait Fetch: Sync {
 
 struct HttpFetch(reqwest::blocking::Client);
 
+fn modrinth_host(url: &str) -> bool {
+    reqwest::Url::parse(url).ok().is_some_and(|u| u.scheme() == "https" && matches!(u.host_str(), Some("api.modrinth.com" | "cdn.modrinth.com")))
+}
+
+/// After a direct failure the next requests try the site first for a while, so only one waits for the timeout
+static DIRECT_FAILED_AT: std::sync::Mutex<Option<std::time::Instant>> = std::sync::Mutex::new(None);
+const DIRECT_RETRY_AFTER: Duration = Duration::from_secs(600);
+
+fn direct_known_blocked() -> bool {
+    let guard = DIRECT_FAILED_AT.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard.is_some_and(|at| at.elapsed() < DIRECT_RETRY_AFTER)
+}
+
+fn mark_direct(blocked: bool) {
+    *DIRECT_FAILED_AT.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = blocked.then(std::time::Instant::now);
+}
+
+/// A GET to Modrinth; when the player's line cannot reach it, the same request goes through the site
+fn get_modrinth(client: &reqwest::blocking::Client, url: &str, timeout: Duration) -> Result<reqwest::blocking::Response, String> {
+    let through_site = || {
+        let endpoint = format!("{}/launcher/proxy", crate::config::API_BASE);
+        crate::site_auth::send_authed(client, || client.get(&endpoint).query(&[("url", url)]).timeout(timeout))
+    };
+    if !modrinth_host(url) {
+        return client.get(url).timeout(timeout).send().map_err(|err| err.to_string());
+    }
+    if direct_known_blocked() {
+        if let Ok(res) = through_site() {
+            return Ok(res);
+        }
+    }
+    match client.get(url).timeout(timeout).send() {
+        Ok(res) => {
+            mark_direct(false);
+            Ok(res)
+        }
+        Err(direct) => {
+            let res = through_site().map_err(|site| format!("{direct}; через сайт: {site}"))?;
+            mark_direct(true);
+            Ok(res)
+        }
+    }
+}
+
 impl HttpFetch {
     fn new() -> Result<Self, String> {
         reqwest::blocking::Client::builder()
+            .user_agent(concat!("LemiCraft-Launcher/", env!("CARGO_PKG_VERSION")))
             .connect_timeout(Duration::from_secs(10))
             .redirect(reqwest::redirect::Policy::custom(|attempt| {
                 if attempt.previous().len() >= 5 {
@@ -329,7 +374,7 @@ impl Fetch for HttpFetch {
         // The time allowed grows with the size, so a big file on a slow line is not cut at a fixed mark (about
         // 800 kbit/s at the least), and a stalled one still ends
         let allowed = Duration::from_secs((max_bytes / 100_000).clamp(60, 3600));
-        let res = self.0.get(url).timeout(allowed).send().map_err(|err| err.to_string())?;
+        let res = get_modrinth(&self.0, url, allowed)?;
         if !res.status().is_success() {
             return Err(format!("ответ {}", res.status()));
         }
@@ -682,15 +727,12 @@ struct PackVersion {
 }
 
 fn latest_pack_version(fetcher: &HttpFetch, project: &str) -> Result<(PackVersion, String, u64), String> {
-    let url = format!("https://api.modrinth.com/v2/project/{project}/version");
-    let res = fetcher
-        .0
-        .get(url)
-        .header(reqwest::header::USER_AGENT, concat!("LemiCraft-Launcher/", env!("CARGO_PKG_VERSION")))
-        .query(&[("loaders", "[\"fabric\"]".to_string()), ("game_versions", format!("[\"{}\"]", crate::config::MC_VERSION))])
-        .timeout(Duration::from_secs(20))
-        .send()
-        .map_err(|err| format!("Modrinth не отвечает: {err}"))?;
+    let url = reqwest::Url::parse_with_params(
+        &format!("https://api.modrinth.com/v2/project/{project}/version"),
+        &[("loaders", "[\"fabric\"]".to_string()), ("game_versions", format!("[\"{}\"]", crate::config::MC_VERSION))],
+    )
+    .map_err(|err| err.to_string())?;
+    let res = get_modrinth(&fetcher.0, url.as_str(), Duration::from_secs(20)).map_err(|err| format!("Modrinth не отвечает: {err}"))?;
     if res.status().as_u16() == 404 {
         return Err("Такого набора на Modrinth нет".to_string());
     }

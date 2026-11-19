@@ -248,8 +248,7 @@ pub async fn get_player_profile(nick: String) -> Result<Profile, String> {
     }
     tauri::async_runtime::spawn_blocking(move || {
         let client = client()?;
-        // the site gives the statistics of another player to a signed-in player; without that (a guest, an old
-        // site, a failed call) the public data is shown, and a player that is not on the list is told so
+        // statistics come only for a signed-in player; otherwise the public data is shown
         match from_launcher_endpoint(&client, &format!("{}/players/{}/profile", launcher_profile_url().trim_end_matches("/profile"), nick)) {
             Ok(Some(profile)) => Ok(profile),
             Err(err) if err.contains("белом списке") => Err(err),

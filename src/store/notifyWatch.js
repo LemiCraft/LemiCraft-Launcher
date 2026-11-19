@@ -1,21 +1,10 @@
 import { watch } from 'vue';
 import { newsState, fetchNews } from './news.js';
-import { serverStatus, startServerStatusPolling } from './serverStatus.js';
 
-// Tells the player about a new post and about the server coming back while the launcher is not in front
-// (the backend drops the notification when the window is, and when notifications are off)
+// New post; the backend drops the notification while the window is in front
 const NEWS_CHECK_MS = 5 * 60 * 1000;
 const LAST_NEWS_KEY = 'lc-last-news';
 let started = false;
-
-export async function notify(title, body, force = false) {
-  try {
-    const { invoke } = await import('@tauri-apps/api/core');
-    await invoke('show_notification', { title, body, force });
-  } catch (err) {
-    console.error('failed to show a notification:', err);
-  }
-}
 
 export async function notifyNews(post, force = false) {
   try {
@@ -53,7 +42,7 @@ export function startNotifyWatcher() {
   started = true;
 
   // the feed asks only while it is on screen; this keeps asking on the other pages and when minimized
-  setInterval(() => fetchNews(), NEWS_CHECK_MS);
+  setInterval(() => fetchNews().catch(() => {}), NEWS_CHECK_MS);
   watch(
     () => newsState.items[0],
     (top) => {
@@ -65,16 +54,5 @@ export function startNotifyWatcher() {
       if (!last || at >= last.at) remember(top);
     },
     { immediate: true },
-  );
-
-  startServerStatusPolling();
-  let wasOffline = false;
-  watch(
-    () => [serverStatus.loaded, serverStatus.online],
-    ([loaded, online]) => {
-      if (!loaded) return;
-      if (online && wasOffline) notify('Сервер снова онлайн', 'LemiCraft доступен, можно заходить');
-      wasOffline = !online;
-    },
   );
 }

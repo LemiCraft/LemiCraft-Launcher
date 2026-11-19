@@ -1,8 +1,6 @@
 import { reactive } from 'vue';
 
-// The guide for a newcomer. A step is a place on the screen (a spotlight), a page to be on and a few words.
-// Most steps only show; the steps with a `task` ask the player to do something (log in, choose a skin, play),
-// can be put off, and wait for the player where the thing takes a window of its own (the login).
+// The guide for a newcomer: a step is a lit place, a page and a few words; a step with a `task` asks for an action and can be put off
 export const TOUR_STEPS = [
   {
     // the greeting: no place is lit, the player is asked whether they want the guide at all
@@ -81,14 +79,12 @@ const DONE_KEY = 'lc-tour-done';
 export const tourState = reactive({
   open: false,
   step: 0,
-  // the guide is out of the way while a window of its own (the login) works, and it comes back after
+  // hidden while a window of its own (the login) works
   paused: false,
-  // raised by the step of the login; the sidebar answers it by opening its choice of the way to log in
+  // raised by a step's main button; the sidebar and the skins page answer by opening their dialogs
   loginRequests: 0,
-  // the same for the dialog of the upload of a skin, and whether it has been opened during this step
   uploadRequests: 0,
   uploadOpened: false,
-  // the menu of the account shows itself during the step of the login
   accountMenu: false,
 });
 
@@ -125,11 +121,18 @@ export function finishTour() {
 
 export function nextTourStep() {
   if (tourState.step >= TOUR_STEPS.length - 1) finishTour();
-  else tourState.step += 1;
+  else {
+    tourState.step += 1;
+    tourState.uploadOpened = false;
+  }
 }
 
+// the greeting is not returned to
 export function previousTourStep() {
-  if (tourState.step > 0) tourState.step -= 1;
+  if (tourState.step > 1) {
+    tourState.step -= 1;
+    tourState.uploadOpened = false;
+  }
 }
 
 /** The first start of the launcher on this machine: the guide begins by itself, once */

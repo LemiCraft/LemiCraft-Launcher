@@ -253,8 +253,7 @@ async function onPickMrpack() {
   await showMrpack(async () => picked);
 }
 
-// A pack dragged onto the page: the window's own file drop is off (the skins page uses the page's), so the file
-// comes as a File and is handed to the backend as bytes
+// The window's own file drop is off, so a dragged pack arrives as a File and goes to the backend as bytes
 const dropActive = ref(false);
 let dragDepth = 0;
 
@@ -314,6 +313,7 @@ async function onRemoveImportBundle() {
       if (!choice) return;
     }
     await uninstallImportBundle();
+    refreshPackUpdate();
     pushNotification('Набор удалён');
   } catch (err) {
     pushNotification(String(err), 'error');

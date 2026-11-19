@@ -201,8 +201,7 @@ async fn ping() -> Result<(Value, Option<f64>), String> {
 }
 
 /// One status request to `connect_host:port`, announcing `handshake_host` like the game does
-/// The status, and the time of the ping packet's round trip: what the server list of the game shows. The status
-/// reply itself is slower behind a relay (it waits for the server behind it), so it is not the ping.
+/// The status and the round trip of the ping packet (what the game's server list shows; the status reply is slower behind a relay)
 pub(crate) async fn ping_target(connect_host: &str, port: u16, handshake_host: &str) -> Result<(Value, Option<f64>), String> {
     let host = handshake_host;
     let mut stream = TcpStream::connect((connect_host, port)).await.map_err(|err| err.to_string())?;

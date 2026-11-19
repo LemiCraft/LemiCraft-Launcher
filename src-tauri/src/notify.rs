@@ -1,6 +1,7 @@
 // System notifications and the start with the system
 use tauri::{AppHandle, Manager};
 use tauri_plugin_autostart::ManagerExt;
+#[cfg(not(windows))]
 use tauri_plugin_notification::NotificationExt;
 
 /// Passed by the system's autostart entry: the launcher then opens minimized
@@ -10,8 +11,8 @@ pub fn started_by_system() -> bool {
     std::env::args().any(|arg| arg == AUTOSTART_ARG)
 }
 
-/// Windows shows a notification under the name and icon of the application ID it is sent with, and one that is
-/// not installed has none registered. It is written to the user's own registry branch, so no rights are needed.
+/// Windows names a notification after its application ID, and an uninstalled one has no name or icon registered;
+/// the user's own registry branch needs no rights
 #[cfg(windows)]
 pub fn register_app_identity(app: &AppHandle) {
     use std::os::windows::process::CommandExt;
@@ -33,20 +34,26 @@ pub fn register_app_identity(app: &AppHandle) {
     });
 }
 
-/// Shown only when the player is not looking at the launcher: what it says is on the screen otherwise
-#[tauri::command]
-pub fn show_notification(app: AppHandle, title: String, body: String, force: Option<bool>) -> Result<(), String> {
-    let force = force.unwrap_or(false);
-    if !force && !crate::settings::load().notifications {
-        return Ok(());
-    }
-    if let (false, Some(window)) = (force, app.get_webview_window("main")) {
-        let in_front = window.is_focused().unwrap_or(false) && !window.is_minimized().unwrap_or(false);
-        if in_front {
-            return Ok(());
+fn launcher_in_front(app: &AppHandle) -> bool {
+    app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
+}
+
+/// Skipped while the player looks at the launcher: the same is on the screen
+fn muted(app: &AppHandle, force: Option<bool>) -> bool {
+    !force.unwrap_or(false) && (!crate::settings::load().notifications || launcher_in_front(app))
+}
+
+/// Covers older than two weeks are not needed again
+#[cfg(windows)]
+fn prune_covers(dir: &std::path::Path) {
+    let limit = std::time::Duration::from_secs(14 * 24 * 3600);
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        let old = entry.metadata().and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok()).is_some_and(|age| age > limit);
+        if old {
+            let _ = std::fs::remove_file(entry.path());
         }
     }
-    app.notification().builder().title(title).body(body).show().map_err(|err| err.to_string())
 }
 
 #[cfg(windows)]
@@ -65,7 +72,10 @@ fn cached_picture(url: &str) -> Option<std::path::PathBuf> {
         return Some(path);
     }
     std::fs::create_dir_all(&dir).ok()?;
-    let res = crate::http::blocking().get(url).send().ok()?;
+    prune_covers(&dir);
+    // a provider may block the CDN: then the site's image proxy
+    let client = crate::http::blocking();
+    let res = client.get(url).send().or_else(|_| client.get(format!("{}/proxy/image", crate::config::API_BASE)).query(&[("url", url)]).send()).ok()?;
     if !res.status().is_success() || res.content_length().is_some_and(|len| len > MAX_BYTES) {
         return None;
     }
@@ -83,16 +93,10 @@ fn bring_to_front(app: &AppHandle) {
     }
 }
 
-fn launcher_in_front(app: &AppHandle) -> bool {
-    app.get_webview_window("main").is_some_and(|w| w.is_focused().unwrap_or(false) && !w.is_minimized().unwrap_or(false))
-}
-
-/// A new post: the author as the title, the name of the post as the text, the cover on top. A click brings the
-/// launcher up and opens the post (Windows; the other systems get a plain notification).
+/// A new post: author, title and the cover; on Windows a click opens the post, elsewhere it is a plain notification
 #[tauri::command]
 pub async fn show_news_toast(app: AppHandle, id: String, title: String, body: String, picture_url: Option<String>, force: Option<bool>) -> Result<(), String> {
-    let force = force.unwrap_or(false);
-    if !force && (!crate::settings::load().notifications || launcher_in_front(&app)) {
+    if muted(&app, force) {
         return Ok(());
     }
     #[cfg(windows)]

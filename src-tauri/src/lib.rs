@@ -195,7 +195,6 @@ pub fn run() {
       mrpack::installed_pack,
       profile::get_profile,
       profile::get_cached_profile,
-      notify::show_notification,
       notify::show_news_toast,
       notify::get_autostart,
       notify::set_autostart,

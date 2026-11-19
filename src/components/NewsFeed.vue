@@ -1,4 +1,5 @@
 <script setup>
+import { proxiedImageOnError } from '../utils/imageFallback.js';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import NewsModal from './NewsModal.vue';
 import { parseInline, previewText, replaceDiscordTimestamps, shortDisplayTitle } from '../utils/newsMarkdown.js';
@@ -134,7 +135,7 @@ onBeforeUnmount(() => clearInterval(checkTimer));
             >
               <div class="news-author">
                 <div class="author-avatar" v-if="item.authorAvatarUrl">
-                  <img class="fade-img" :src="item.authorAvatarUrl" alt="" loading="lazy" @load="$event.target.classList.add('ready')" />
+                  <img class="fade-img" :src="item.authorAvatarUrl" alt="" loading="lazy" @load="$event.target.classList.add('ready')" @error="proxiedImageOnError" />
                 </div>
                 <div class="author-avatar author-avatar-fallback" v-else>{{ (item.author || '?').charAt(0) }}</div>
                 <span class="author-name">{{ item.author }}</span>

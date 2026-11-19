@@ -1,5 +1,4 @@
-// One HTTP client for the whole launcher. A connection that is open is reused, so the TLS handshake (a quarter of
-// a second on a slow route, more than half a second through a VPN) is paid once per host, not once per request.
+// One client for the whole launcher: open connections are reused, so the TLS handshake is paid once per host
 use std::sync::OnceLock;
 use std::time::Duration;
 
@@ -10,8 +9,7 @@ fn builder() -> reqwest::ClientBuilder {
         .tcp_keepalive(Duration::from_secs(30))
 }
 
-/// For code that runs on a worker thread (spawn_blocking). The whole request may take 20 seconds; a call that
-/// needs another limit sets its own with `.timeout()`.
+/// For worker threads (spawn_blocking); 20 s per request unless a call sets its own `.timeout()`
 pub fn blocking() -> reqwest::blocking::Client {
     static CLIENT: OnceLock<reqwest::blocking::Client> = OnceLock::new();
     CLIENT

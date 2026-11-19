@@ -482,7 +482,7 @@ onUnmounted(() => {
       <div class="row">
         <div class="row-text">
           <span class="row-title">Уведомления</span>
-          <span class="row-sub">О новых новостях и о том, что сервер снова онлайн, пока лаунчер свёрнут</span>
+          <span class="row-sub">О новых новостях, пока лаунчер свёрнут</span>
         </div>
         <button class="toggle" role="switch" :aria-checked="notifications" aria-label="Уведомления" :class="{ on: notifications }" @click="notifications = !notifications">
           <span class="knob"></span>

@@ -2,9 +2,7 @@ import { nextTick, onBeforeUnmount, watch } from 'vue';
 
 const FOCUSABLE = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-// Keeps the keyboard inside a dialog while it is open: Tab goes round its controls instead of out to the page behind,
-// the first control takes the focus on opening, and what had the focus before gets it back on closing.
-// `container` is a ref to the element of the dialog, `active` a ref to whether it is open.
+// Keeps Tab inside an open dialog, focuses its first control and gives the focus back on closing
 export function useFocusTrap(container, active, initialSelector = null) {
   let previous = null;
 
@@ -43,7 +41,7 @@ export function useFocusTrap(container, active, initialSelector = null) {
     active,
     async (isActive) => {
       if (isActive) {
-        previous = document.activeElement;
+        previous = document.activeElement ?? document.body;
         document.addEventListener('keydown', onKeydown, true);
         await nextTick();
         // focusVisible: false, so that a dialog opened with the mouse does not draw the keyboard ring on its first control

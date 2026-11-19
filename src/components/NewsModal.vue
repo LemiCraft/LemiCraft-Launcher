@@ -1,4 +1,5 @@
 <script setup>
+import { proxiedImageOnError } from '../utils/imageFallback.js';
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { parseBlocks, parseInline, replaceDiscordTimestamps } from '../utils/newsMarkdown.js';
 import { pushNotification } from '../store/notifications.js';
@@ -59,7 +60,7 @@ async function openExternal(target) {
 
       <div class="modal-scroll" ref="scrollEl" @scroll="onScroll">
         <div v-if="item.imageUrl" class="cover">
-          <img class="fade-img" :src="item.imageUrl" alt="" @load="$event.target.classList.add('ready')" />
+          <img class="fade-img" :src="item.imageUrl" alt="" @load="$event.target.classList.add('ready')" @error="proxiedImageOnError" />
         </div>
 
         <div class="body">
@@ -82,7 +83,7 @@ async function openExternal(target) {
 
           <div class="author-row">
             <div class="avatar" v-if="item.authorAvatarUrl">
-              <img class="fade-img" :src="item.authorAvatarUrl" alt="" @load="$event.target.classList.add('ready')" />
+              <img class="fade-img" :src="item.authorAvatarUrl" alt="" @load="$event.target.classList.add('ready')" @error="proxiedImageOnError" />
             </div>
             <div class="avatar avatar-fallback" v-else>{{ (item.author || '?').charAt(0) }}</div>
             <div class="author-text">
