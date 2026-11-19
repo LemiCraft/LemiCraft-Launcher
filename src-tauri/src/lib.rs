@@ -1,4 +1,5 @@
 mod auth;
+mod http;
 mod auth_ely;
 mod config;
 mod discord_rpc;
@@ -9,6 +10,7 @@ mod mods;
 mod mrpack;
 mod news;
 mod entry_points;
+mod notify;
 mod profile;
 mod provider_status;
 mod rules;
@@ -102,6 +104,8 @@ pub fn run() {
     }))
     .plugin(tauri_plugin_deep_link::init())
     .plugin(tauri_plugin_dialog::init())
+    .plugin(tauri_plugin_notification::init())
+    .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, Some(vec![notify::AUTOSTART_ARG])))
     // Blocks WebView2 shortcuts (Ctrl+R, Ctrl+W...); PlatformOptions is the only part that works on Windows
     .plugin({
       let builder = tauri_plugin_prevent_default::Builder::new().with_flags(tauri_plugin_prevent_default::Flags::all());
@@ -156,7 +160,10 @@ pub fn run() {
       {
         builder = builder.shadow(true);
       }
-      builder.build()?;
+      let main_window = builder.build()?;
+      if notify::started_by_system() {
+        let _ = main_window.minimize();
+      }
       window_effect::apply(app.handle(), translucent);
 
       Ok(())
@@ -180,8 +187,15 @@ pub fn run() {
       mrpack::stage_mrpack,
       mrpack::preview_mrpack,
       mrpack::apply_mrpack,
+      mrpack::stage_modrinth_pack,
+      mrpack::check_modrinth_pack_update,
       profile::get_profile,
       profile::get_cached_profile,
+      notify::show_notification,
+      notify::get_autostart,
+      notify::set_autostart,
+      profile::get_player_profile,
+      profile::get_online_players,
       entry_points::get_entry_routes,
       entry_points::probe_entry_points,
       entry_points::get_cached_entry_points,

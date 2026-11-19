@@ -69,13 +69,16 @@ function chooseHeroTitle(hour = new Date().getHours(), random = Math.random) {
 </script>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { accountStore } from '../store/account.js';
 import { serverStatus, startServerStatusPolling } from '../store/serverStatus.js';
 import { installState, startInstallListeners, launchGame, refreshInstalledState } from '../store/installProgress.js';
 import { modsState } from '../store/mods.js';
 import { startProviderStatusWatcher } from '../store/providerStatus.js';
+import { profileView, onlineState, loadOnlinePlayers } from '../store/profile.js';
 import ProviderBanner from './ProviderBanner.vue';
+
+const emit = defineEmits(['navigate']);
 
 const bannerImages = Object.entries(import.meta.glob('../assets/banner*.jpg', { eager: true, query: '?url', import: 'default' }))
   .sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true }))
@@ -104,6 +107,50 @@ const visiblePlayers = computed(() =>
     .slice(0, 3),
 );
 const otherPlayersCount = computed(() => Math.max(0, (serverStatus.players ?? 0) - visiblePlayers.value.length));
+
+// Hovering the online chip opens the list of everyone on the server; a click on a player opens their profile
+const onlineOpen = ref(false);
+let onlineCloseTimer = 0;
+function showOnline() {
+  clearTimeout(onlineCloseTimer);
+  onlineOpen.value = true;
+  loadOnlinePlayers();
+}
+
+// the edges of the list fade while there is more to scroll, as on the other pages
+const onlineListEl = ref(null);
+const onlineTopFaded = ref(false);
+const onlineBottomFaded = ref(false);
+function onOnlineScroll() {
+  const el = onlineListEl.value;
+  if (!el) return;
+  onlineTopFaded.value = el.scrollTop > 2;
+  onlineBottomFaded.value = el.scrollTop + el.clientHeight < el.scrollHeight - 2;
+}
+// a short wait, so the pointer can cross the gap between the chip and the list
+function hideOnlineSoon() {
+  clearTimeout(onlineCloseTimer);
+  onlineCloseTimer = setTimeout(() => { onlineOpen.value = false; }, 200);
+}
+function toggleOnline() {
+  if (onlineOpen.value) onlineOpen.value = false;
+  else showOnline();
+}
+const onlineNames = computed(() => {
+  // the site knows everyone; until it answers, the few names the server's ping gave
+  const names = onlineState.players.length
+    ? onlineState.players
+    : serverStatus.playersSample.map((player) => player?.name ?? '').filter((name) => VALID_NICKNAME.test(name));
+  return [...new Set(names)].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+});
+watch([onlineOpen, () => onlineNames.value.length], () => nextTick(onOnlineScroll));
+
+function openPlayer(name) {
+  onlineOpen.value = false;
+  profileView.nick = name;
+  emit('navigate', 'profile');
+}
+onUnmounted(() => clearTimeout(onlineCloseTimer));
 
 function playerAvatarUrl(player) {
   return `https://lemicraft.ru/api/avatar/${encodeURIComponent(player.name)}?size=64`;
@@ -179,7 +226,8 @@ onUnmounted(() => {
 
       <Transition name="chips" mode="out-in">
         <div v-if="serverStatus.loaded && serverStatus.online" key="online" class="chips">
-          <span class="chip online-chip">
+          <span class="online-wrap" @mouseenter="showOnline" @mouseleave="hideOnlineSoon">
+          <button type="button" class="chip online-chip" :aria-expanded="onlineOpen" aria-haspopup="true" @click="toggleOnline" @keydown.esc="onlineOpen = false">
             <span class="online-dot"></span>
             <!-- a number that changes is cross-faded in its own place, so the chip does not twitch -->
             <span class="swap-slot">
@@ -193,7 +241,6 @@ onUnmounted(() => {
                 v-for="player in visiblePlayers"
                 :key="player.id || player.name"
                 class="player-avatar"
-                :title="player.name"
               >
                 <img
                   class="player-avatar-img"
@@ -204,7 +251,7 @@ onUnmounted(() => {
                   @error="avatarFailed(player)"
                 />
               </span>
-              <span v-if="otherPlayersCount > 0" key="more" class="player-overflow" :title="`Ещё ${otherPlayersCount} игроков`">
+              <span v-if="otherPlayersCount > 0" key="more" class="player-overflow">
                 <span class="swap-slot">
                   <Transition name="chip-swap">
                     <span :key="otherPlayersCount" class="swap-item">+{{ otherPlayersCount }}</span>
@@ -212,6 +259,18 @@ onUnmounted(() => {
                 </span>
               </span>
             </TransitionGroup>
+          </button>
+          <Transition name="online-pop">
+            <div v-if="onlineOpen && onlineNames.length" class="online-pop">
+              <span class="online-pop-head">Сейчас в игре · {{ Math.max(serverStatus.players ?? 0, onlineNames.length) }}</span>
+              <div ref="onlineListEl" class="online-pop-list edge-fade" :class="{ 'edge-top': onlineTopFaded, 'edge-bottom': onlineBottomFaded }" @scroll="onOnlineScroll">
+                <button v-for="name in onlineNames" :key="name" type="button" class="online-row" :aria-label="`Профиль ${name}`" @click="openPlayer(name)">
+                  <img class="online-row-face" :src="playerAvatarUrl({ name })" alt="" />
+                  <span class="online-row-name">{{ name }}</span>
+                </button>
+              </div>
+            </div>
+          </Transition>
           </span>
           <span class="chip mono">
             <span class="ping-dot" :class="pingQuality(serverStatus.ping)"></span>
@@ -429,6 +488,110 @@ h1 {
   background: rgba(34, 139, 70, 0.22);
   border-color: rgba(109, 226, 139, 0.34);
   font-weight: 650;
+}
+.online-chip {
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease;
+}
+.online-chip:hover,
+.online-chip[aria-expanded='true'] {
+  background: rgba(34, 139, 70, 0.34);
+  border-color: rgba(109, 226, 139, 0.55);
+}
+.online-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.online-pop {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  z-index: 6;
+  width: 300px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 14px;
+  background: rgba(17, 18, 22, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.7);
+  transform-origin: 20px 100%;
+}
+/* the gap under the list belongs to it, so the pointer does not fall out on the way from the chip */
+.online-pop::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 10px;
+}
+.online-pop-head {
+  padding: 0 4px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+.online-pop-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  max-height: 116px;
+  overflow-y: auto;
+}
+.online-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.online-row:hover,
+.online-row:focus-visible {
+  background: rgba(255, 255, 255, 0.1);
+}
+.online-row-face {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  border-radius: 6px;
+  background: #17261c;
+  object-fit: cover;
+}
+.online-row-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.online-pop-enter-active,
+.online-pop-leave-active {
+  transition: opacity 0.2s ease, transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.online-pop-enter-from,
+.online-pop-leave-to {
+  opacity: 0;
+  transform: translateY(6px) scale(0.97);
+}
+@media (prefers-reduced-motion: reduce) {
+  .online-pop-enter-active,
+  .online-pop-leave-active {
+    transition: none;
+  }
 }
 .online-dot {
   width: 7px;

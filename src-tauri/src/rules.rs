@@ -69,11 +69,8 @@ pub async fn get_rules() -> Result<RulesDoc, String> {
 }
 
 async fn get_rules_live() -> Result<RulesDoc, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|err| err.to_string())?;
-    let res = client.get(rules_api_url()).send().await.map_err(|err| err.to_string())?;
+    let client = crate::http::asynchronous();
+    let res = client.get(rules_api_url()).timeout(std::time::Duration::from_secs(15)).send().await.map_err(|err| err.to_string())?;
     if !res.status().is_success() {
         return Err(format!("Rules API returned {}", res.status()));
     }

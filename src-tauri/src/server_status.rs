@@ -115,8 +115,8 @@ async fn get_server_status_live() -> Result<ServerStatusInfo, String> {
     for attempt in 1..=MAX_ATTEMPTS {
         let start = Instant::now();
         match timeout(TIMEOUT, ping()).await {
-            Ok(Ok(value)) => {
-                result = Some((value, start.elapsed().as_secs_f64() * 1000.0));
+            Ok(Ok((value, pong))) => {
+                result = Some((value, pong.unwrap_or_else(|| start.elapsed().as_secs_f64() * 1000.0)));
                 break;
             }
             Ok(Err(err)) => last_err = err,
@@ -195,13 +195,15 @@ fn motd_text(desc: &Value) -> String {
     clean
 }
 
-async fn ping() -> Result<Value, String> {
+async fn ping() -> Result<(Value, Option<f64>), String> {
     let (host, port) = resolve_target().await;
     ping_target(&host, port, &host).await
 }
 
 /// One status request to `connect_host:port`, announcing `handshake_host` like the game does
-pub(crate) async fn ping_target(connect_host: &str, port: u16, handshake_host: &str) -> Result<Value, String> {
+/// The status, and the time of the ping packet's round trip: what the server list of the game shows. The status
+/// reply itself is slower behind a relay (it waits for the server behind it), so it is not the ping.
+pub(crate) async fn ping_target(connect_host: &str, port: u16, handshake_host: &str) -> Result<(Value, Option<f64>), String> {
     let host = handshake_host;
     let mut stream = TcpStream::connect((connect_host, port)).await.map_err(|err| err.to_string())?;
     stream.set_nodelay(true).map_err(|err| err.to_string())?;
@@ -249,7 +251,20 @@ pub(crate) async fn ping_target(connect_host: &str, port: u16, handshake_host: &
     let pos = cur.position() as usize;
     let end = pos.checked_add(json_len).filter(|&e| e <= resp.len()).ok_or("Некорректная длина JSON в ответе")?;
 
-    serde_json::from_slice(&resp[pos..end]).map_err(|err| err.to_string())
+    let status: Value = serde_json::from_slice(&resp[pos..end]).map_err(|err| err.to_string())?;
+
+    // the round trip of a ping packet; without an answer the caller falls back to the time of the whole request
+    let mut ping = vec![0x01];
+    ping.extend_from_slice(&0x4c43_i64.to_be_bytes());
+    let start = Instant::now();
+    let pong = match write_packet(&mut stream, &ping).await {
+        Ok(()) => match timeout(Duration::from_secs(3), stream.read(&mut buf)).await {
+            Ok(Ok(n)) if n > 0 => Some(start.elapsed().as_secs_f64() * 1000.0),
+            _ => None,
+        },
+        Err(_) => None,
+    };
+    Ok((status, pong))
 }
 
 pub(crate) async fn write_packet(stream: &mut TcpStream, data: &[u8]) -> Result<(), String> {

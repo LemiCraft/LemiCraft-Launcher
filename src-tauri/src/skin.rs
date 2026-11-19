@@ -24,10 +24,7 @@ pub(crate) fn read_cache_if_fresh(path: &std::path::Path, ttl: Duration) -> Opti
 }
 
 fn timed_client() -> reqwest::blocking::Client {
-    reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .unwrap_or_default()
+    crate::http::blocking()
 }
 
 // skinview3d needs a same-origin texture; the skin host sends no CORS headers, so this

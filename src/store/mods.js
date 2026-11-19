@@ -223,6 +223,22 @@ export async function stageMrpack(file) {
   return withInvoke((invoke) => invoke('stage_mrpack', bytes));
 }
 
+// A pack by its Modrinth link: the newest version for this game is downloaded and then used like a chosen file
+export async function stageModrinthPack(link) {
+  return withInvoke((invoke) => invoke('stage_modrinth_pack', { link }));
+}
+
+// { project, current, latest } when the pack installed by a link has a newer version
+export async function checkModrinthPackUpdate() {
+  if (!window.__TAURI_INTERNALS__) return null;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke('check_modrinth_pack_update');
+  } catch {
+    return null;
+  }
+}
+
 // A Modrinth pack (.mrpack) from a file: the preview says what it holds and whether it fits the game
 export async function previewMrpack(path) {
   return withInvoke((invoke) => invoke('preview_mrpack', { path }));

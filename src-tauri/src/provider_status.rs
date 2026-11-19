@@ -35,7 +35,7 @@ fn probes(provider: &str) -> &'static [(&'static str, &'static str)] {
 
 // Alive means it answered with anything but a 5xx (an unauthenticated 401 or 404 is a healthy server)
 fn probe(client: &reqwest::blocking::Client, label: &str, url: &str) -> Option<String> {
-    match client.get(url).header("User-Agent", "LemiCraft-Launcher").send() {
+    match client.get(url).header("User-Agent", "LemiCraft-Launcher").timeout(PROBE_TIMEOUT).send() {
         Ok(res) if res.status().is_server_error() => Some(format!("{label} не отвечает (код {})", res.status().as_u16())),
         Ok(_) => None,
         Err(err) if err.is_timeout() => Some(format!("{label} не ответил вовремя")),
@@ -44,7 +44,7 @@ fn probe(client: &reqwest::blocking::Client, label: &str, url: &str) -> Option<S
 }
 
 fn check(provider: &str, targets: &[(&str, &str)]) -> ProviderStatus {
-    let client = reqwest::blocking::Client::builder().timeout(PROBE_TIMEOUT).build().unwrap_or_default();
+    let client = crate::http::blocking();
     let problems: Vec<String> = std::thread::scope(|scope| {
         let handles: Vec<_> = targets.iter().map(|(label, url)| scope.spawn(|| probe(&client, label, url))).collect();
         handles.into_iter().filter_map(|handle| handle.join().ok().flatten()).collect()

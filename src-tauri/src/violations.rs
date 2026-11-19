@@ -29,10 +29,7 @@ struct ViolationsResponse {
 #[tauri::command]
 pub async fn get_violations(username: String) -> Result<Vec<Violation>, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(15))
-            .build()
-            .map_err(|err| err.to_string())?;
+        let client = crate::http::blocking();
         let url = violations_api_url();
         let res = crate::site_auth::send_authed(&client, || client.get(&url).query(&[("username", &username)]))?;
 

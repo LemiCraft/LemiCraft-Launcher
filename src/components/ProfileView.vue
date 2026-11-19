@@ -1,7 +1,7 @@
 <script setup>
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { accountStore } from '../store/account.js';
-import { profileState, loadProfile } from '../store/profile.js';
+import { profileState, loadProfile, onlineState } from '../store/profile.js';
 import { copyText } from '../utils/clipboard.js';
 import { pushNotification } from '../store/notifications.js';
 import { formatAgo, formatCount, formatDate, formatDuration, formatLastLogin, formatPing, roleBackground, roleTextColor } from '../utils/profileFormat.js';
@@ -10,7 +10,50 @@ import CountValue from './CountValue.vue';
 
 const SITE = 'https://lemicraft.ru';
 
-const profile = computed(() => profileState.profile);
+const props = defineProps({
+  // another player's nickname; empty for the signed-in player's own profile
+  nick: { type: String, default: '' },
+});
+
+// Another player's page shows what the site tells everyone: no statistics, and nothing of it is kept
+const other = reactive({ profile: null, loading: false, error: '', skinUrl: null });
+const isOther = computed(() => !!props.nick && props.nick.toLowerCase() !== (accountStore.username ?? '').toLowerCase());
+const view = computed(() => (isOther.value ? other : profileState));
+const skinUrl = computed(() => (isOther.value ? other.skinUrl : accountStore.skinUrl));
+
+async function loadOther() {
+  if (!window.__TAURI_INTERNALS__ || other.loading) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  other.loading = true;
+  other.error = '';
+  if (!other.skinUrl) {
+    const url = `${SITE}/api/skin/image/${encodeURIComponent(props.nick)}`;
+    invoke('fetch_skin_data_uri', { url, force: false }).then(
+      (data) => { other.skinUrl = data; },
+      () => { other.skinUrl = url; },
+    );
+  }
+  try {
+    const found = await invoke('get_player_profile', { nick: props.nick });
+    other.profile = { ...found, online: found.online || onlineState.players.includes(found.nick) };
+  } catch (err) {
+    if (!other.profile) other.error = String(err);
+  } finally {
+    other.loading = false;
+  }
+}
+
+function reload(force = false) {
+  return isOther.value ? loadOther() : loadProfile({ force });
+}
+
+async function openOnSite() {
+  if (!window.__TAURI_INTERNALS__) return;
+  const { invoke } = await import('@tauri-apps/api/core');
+  await invoke('open_external', { target: `${SITE}/profile/${encodeURIComponent(props.nick)}` });
+}
+
+const profile = computed(() => view.value.profile);
 const stats = computed(() => profile.value?.stats ?? null);
 
 const presence = computed(() => {
@@ -51,11 +94,14 @@ const statsNote = computed(() => {
 
 // A failure is not the player's fault: say what happened in a sentence, keep the raw reason small
 const lastError = ref('');
-watch(() => profileState.error, (error) => { if (error) lastError.value = error; }, { immediate: true });
+watch(() => view.value.error, (error) => { if (error) lastError.value = error; }, { immediate: true });
 const errorView = computed(() => {
   const raw = lastError.value;
   if (raw.includes('белом списке')) {
     return { title: 'Профиля пока нет', text: 'Этого аккаунта нет в белом списке сервера, поэтому профиль показать не из чего.', detail: '' };
+  }
+  if (isOther.value && raw.includes('404')) {
+    return { title: 'Игрок не найден', text: 'Такого ника нет в списке сервера.', detail: '' };
   }
   if (raw.includes('Слишком много')) {
     return { title: 'Подождите немного', text: 'Профиль запрашивали слишком часто. Попробуйте через минуту.', detail: '' };
@@ -63,7 +109,7 @@ const errorView = computed(() => {
   return { title: 'Профиль не загрузился', text: 'Сайт сейчас не отвечает. Проверьте соединение и попробуйте снова.', detail: raw };
 });
 
-const skinReady = computed(() => !!accountStore.skinUrl);
+const skinReady = computed(() => !!skinUrl.value);
 
 // A window too small for the figure goes without it (and without the 3D view running for nothing)
 const roomForSkin = ref(true);
@@ -78,11 +124,11 @@ onMounted(() => {
 onBeforeUnmount(() => roomQuery?.removeEventListener('change', onRoomChange));
 // the figure fades in over its placeholder once the skin is on the model
 const skinLoaded = ref(false);
-watch(() => accountStore.skinUrl, () => { skinLoaded.value = false; });
+watch(skinUrl, () => { skinLoaded.value = false; });
 // a viewer that comes back with the panel starts from the default skin again
 watch(() => roomForSkin.value, (room) => { if (room) skinLoaded.value = false; });
 // another account while the page is open (the App clears the old profile): load the new one
-watch(() => accountStore.uuid, (uuid) => { if (uuid) loadProfile({ force: true }); });
+watch(() => accountStore.uuid, (uuid) => { if (uuid && !isOther.value) loadProfile({ force: true }); });
 
 // the button itself answers a copy: the icon turns into a tick for a moment
 const copied = ref(false);
@@ -174,7 +220,7 @@ const fitStyle = computed(() =>
 const boxStyle = computed(() => (scale.value < 1 ? { height: `${natural.value * scale.value}px` } : {}));
 
 onMounted(() => {
-  loadProfile();
+  reload();
   if (typeof ResizeObserver === 'undefined') return;
   sizeObserver = new ResizeObserver(scheduleMeasure);
   if (scrollEl.value) sizeObserver.observe(scrollEl.value);
@@ -189,10 +235,10 @@ onBeforeUnmount(() => {
 <template>
   <div class="profile">
     <div class="head">
-      <h1>Профиль</h1>
-      <button class="refresh" :disabled="profileState.loading" @click="loadProfile({ force: true })">
+      <h1>{{ isOther ? 'Профиль игрока' : 'Профиль' }}</h1>
+      <button class="refresh" :disabled="view.loading" @click="reload(true)">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z" /></svg>
-        {{ profileState.loading ? 'Обновляю...' : 'Обновить' }}
+        {{ view.loading ? 'Обновляю...' : 'Обновить' }}
       </button>
     </div>
 
@@ -201,11 +247,11 @@ onBeforeUnmount(() => {
       <div class="fit-box" :style="boxStyle">
       <div ref="fitEl" class="fit" :style="fitStyle">
       <Transition name="swap" mode="out-in">
-      <section v-if="profileState.error && !profile" key="error" class="card state">
+      <section v-if="view.error && !profile" key="error" class="card state">
         <h2>{{ errorView.title }}</h2>
         <p>{{ errorView.text }}</p>
-        <button class="retry" :disabled="profileState.loading" @click="loadProfile({ force: true })">
-          {{ profileState.loading ? 'Пробую...' : 'Попробовать снова' }}
+        <button class="retry" :disabled="view.loading" @click="reload(true)">
+          {{ view.loading ? 'Пробую...' : 'Попробовать снова' }}
         </button>
         <span v-if="errorView.detail" class="state-detail">{{ errorView.detail }}</span>
       </section>
@@ -220,7 +266,7 @@ onBeforeUnmount(() => {
                 v-if="skinReady"
                 class="skin3d"
                 :class="{ on: skinLoaded }"
-                :url="accountStore.skinUrl"
+                :url="skinUrl"
                 :width="240"
                 :height="400"
                 :lively="false"
@@ -290,7 +336,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-        <section class="card stats">
+        <section v-if="!isOther" class="card stats">
           <h3>Статистика</h3>
           <div class="grid">
             <div v-for="(cell, index) in cells" :key="cell.id" class="cell">
@@ -309,6 +355,10 @@ onBeforeUnmount(() => {
             </div>
           </div>
           <p v-if="statsNote" class="note">{{ statsNote }}</p>
+        </section>
+        <section v-else class="card other-note">
+          <span>Статистика игрока есть на сайте</span>
+          <button class="retry site-btn" @click="openOnSite">Открыть на сайте</button>
         </section>
           </div>
         </div>
@@ -664,6 +714,19 @@ onBeforeUnmount(() => {
 }
 .muted-value {
   color: var(--text-faint);
+}
+.other-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 22px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.site-btn {
+  margin-top: 0;
+  flex-shrink: 0;
 }
 .note {
   margin-top: 12px;

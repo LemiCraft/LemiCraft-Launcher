@@ -35,10 +35,7 @@ pub(crate) fn oauth_error(service: &str, code: Option<&str>, description: Option
 }
 
 fn timed_client() -> reqwest::blocking::Client {
-    reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(20))
-        .build()
-        .unwrap_or_default()
+    crate::http::blocking()
 }
 
 fn account_path() -> PathBuf {

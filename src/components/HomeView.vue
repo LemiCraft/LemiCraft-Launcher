@@ -8,7 +8,7 @@ defineEmits(['navigate']);
 
 <template>
   <div class="home">
-    <PlayHero />
+    <PlayHero @navigate="$emit('navigate', $event)" />
     <NoModsBanner @navigate="$emit('navigate', $event)" />
     <NewsFeed />
   </div>

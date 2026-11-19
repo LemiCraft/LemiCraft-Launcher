@@ -29,6 +29,8 @@ pub struct LauncherSettings {
     pub discord_rpc: bool,
     #[serde(default = "default_translucent")]
     pub translucent: bool,
+    #[serde(default = "default_true")]
+    pub notifications: bool,
 }
 
 fn default_ram_gb() -> u32 {
@@ -71,6 +73,7 @@ impl Default for LauncherSettings {
             crash_analyzer: true,
             discord_rpc: true,
             translucent: default_translucent(),
+            notifications: true,
         }
     }
 }

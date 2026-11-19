@@ -1,4 +1,5 @@
 <script setup>
+import { notify } from '../store/notifyWatch.js';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { pushNotification } from '../store/notifications.js';
 import { showConfirmDialog } from '../store/confirmDialog.js';
@@ -27,6 +28,26 @@ const routes = ref([]);
 const showLogs = ref(false);
 const crashAnalyzer = ref(true);
 const discordRpc = ref(true);
+const notifications = ref(true);
+// TEMPORARY: shows each kind of notification at once, to see how it looks
+const NOTIFY_SAMPLES = [
+  ['Новость LemiCraft', 'Тем временем сегодня в Лемистане официальный праздник'],
+  ['Сервер снова онлайн', 'LemiCraft доступен, можно заходить'],
+];
+const autostart = ref(false);
+
+// kept by the system, not in the settings file
+async function toggleAutostart() {
+  const next = !autostart.value;
+  autostart.value = next;
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('set_autostart', { enabled: next });
+  } catch (err) {
+    autostart.value = !next;
+    console.error('failed to change the autostart:', err);
+  }
+}
 const translucent = ref(false);
 const translucencySupported = ref(false);
 const gameDir = ref(null);
@@ -208,6 +229,8 @@ onMounted(async () => {
   showLogs.value = settings.show_logs;
   crashAnalyzer.value = settings.crash_analyzer;
   discordRpc.value = settings.discord_rpc;
+  notifications.value = settings.notifications ?? true;
+  invoke('get_autostart').then((on) => (autostart.value = !!on), () => {});
   translucent.value = settings.translucent;
   translucencySupported.value = await invoke('get_translucency_support');
   gameDir.value = settings.game_dir;
@@ -227,7 +250,7 @@ watch(translucent, (on) => {
   if (settingsLoaded.value && translucencySupported.value) applyTranslucent(on, { animate: true });
 });
 
-watch([ram, jvmArgs, onLaunch, autoConnect, autoConnectRoute, showLogs, crashAnalyzer, discordRpc, translucent, gameDir], () => {
+watch([ram, jvmArgs, onLaunch, autoConnect, autoConnectRoute, showLogs, crashAnalyzer, discordRpc, notifications, translucent, gameDir], () => {
   if (!settingsLoaded.value || !window.__TAURI_INTERNALS__) return;
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
@@ -242,6 +265,7 @@ watch([ram, jvmArgs, onLaunch, autoConnect, autoConnectRoute, showLogs, crashAna
         show_logs: showLogs.value,
         crash_analyzer: crashAnalyzer.value,
         discord_rpc: discordRpc.value,
+        notifications: notifications.value,
         translucent: translucent.value,
         game_dir: gameDir.value,
       },
@@ -409,6 +433,35 @@ onUnmounted(() => {
           <span class="row-sub">Показывать в статусе Discord, что вы играете на LemiCraft</span>
         </div>
         <button class="toggle" :class="{ on: discordRpc }" @click="discordRpc = !discordRpc">
+          <span class="knob"></span>
+        </button>
+      </div>
+      <div class="row">
+        <div class="row-text">
+          <span class="row-title">Уведомления</span>
+          <span class="row-sub">О новых новостях и о том, что сервер снова онлайн, пока лаунчер свёрнут</span>
+        </div>
+        <button class="toggle" :class="{ on: notifications }" @click="notifications = !notifications">
+          <span class="knob"></span>
+        </button>
+      </div>
+      <div class="row">
+        <div class="row-text">
+          <span class="row-title">Проверка уведомлений (временно)</span>
+          <span class="row-sub">Показывает уведомления сразу, чтобы увидеть, как они выглядят</span>
+        </div>
+        <div class="notify-test">
+          <button v-for="(sample, i) in NOTIFY_SAMPLES" :key="i" class="browse-btn" @click="notify(sample[0], sample[1], true)">
+            {{ i === 0 ? 'Новость' : 'Сервер онлайн' }}
+          </button>
+        </div>
+      </div>
+      <div class="row">
+        <div class="row-text">
+          <span class="row-title">Запускать вместе с системой</span>
+          <span class="row-sub">Лаунчер откроется свёрнутым при входе в систему</span>
+        </div>
+        <button class="toggle" :class="{ on: autostart }" @click="toggleAutostart">
           <span class="knob"></span>
         </button>
       </div>
@@ -696,6 +749,10 @@ onUnmounted(() => {
 }
 
 /* a hint that changes with the choice fades into the new text */
+.notify-test {
+  display: flex;
+  gap: 8px;
+}
 .sub-enter-active {
   transition: opacity 0.24s ease, transform 0.26s cubic-bezier(0.2, 0.7, 0.2, 1);
 }

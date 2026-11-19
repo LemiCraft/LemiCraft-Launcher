@@ -27,10 +27,7 @@ pub struct ModCatalogEntry {
 }
 
 fn timed_client() -> reqwest::blocking::Client {
-    reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .unwrap_or_default()
+    crate::http::blocking()
 }
 
 
@@ -624,6 +621,16 @@ pub async fn apply_official_pack(app: AppHandle, download_url: String, version: 
 pub(crate) struct ImportBundleState {
     pub(crate) files: Vec<String>,
     pub(crate) mod_ids: Vec<String>,
+    /// Where a Modrinth pack came from, when it was taken by a link: lets the launcher say that a newer one is out
+    #[serde(default)]
+    pub(crate) source: Option<PackSource>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub(crate) struct PackSource {
+    pub(crate) project: String,
+    pub(crate) version_id: String,
+    pub(crate) version_number: String,
 }
 
 fn import_bundle_state_path() -> PathBuf {
@@ -641,6 +648,7 @@ pub(crate) fn load_import_bundle_state() -> Option<ImportBundleState> {
             .filter(|f| Path::new(f).components().all(|c| matches!(c, std::path::Component::Normal(_))))
             .collect(),
         mod_ids: state.mod_ids,
+        source: state.source,
     };
     // Jar-based like load_official_pack_state: config/options.txt get recreated by the game, so they can't count as installed
     let minecraft_dir = minecraft_dir();
@@ -771,7 +779,7 @@ pub async fn apply_import_bundle(code: String, mod_ids: Vec<String>) -> Result<(
             }
         }
 
-        save_import_bundle_state(&ImportBundleState { files: new_files, mod_ids })
+        save_import_bundle_state(&ImportBundleState { files: new_files, mod_ids, source: None })
     })
     .await
     .map_err(|err| err.to_string())?

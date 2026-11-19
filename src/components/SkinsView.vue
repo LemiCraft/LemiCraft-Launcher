@@ -654,6 +654,14 @@ async function onConfirmElybyLogin() {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  animation: thumb-in 0.45s ease both;
+}
+@keyframes thumb-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thumb-rendered { animation: none; }
 }
 .thumb-skeleton {
   display: block;

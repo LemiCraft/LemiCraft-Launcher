@@ -13,6 +13,8 @@ import {
   previewMrpack,
   applyMrpack,
   stageMrpack,
+  stageModrinthPack,
+  checkModrinthPackUpdate,
   uninstallImportBundle,
   loadInstalledImportBundle,
   isPackOnly,
@@ -202,6 +204,24 @@ async function showMrpack(getPath) {
   }
 }
 
+const mrpackLink = ref('');
+async function onLoadMrpackLink() {
+  const link = mrpackLink.value.trim();
+  if (!link || mrpackChecking.value) return;
+  await showMrpack(() => stageModrinthPack(link));
+  if (!mrpackError.value) mrpackLink.value = '';
+}
+
+// A pack installed by a link: says when a newer version is out
+const packUpdate = ref(null);
+async function refreshPackUpdate() {
+  packUpdate.value = await checkModrinthPackUpdate();
+}
+async function onUpdatePack() {
+  if (!packUpdate.value || mrpackChecking.value) return;
+  await showMrpack(() => stageModrinthPack(packUpdate.value.project));
+}
+
 async function onPickMrpack() {
   if (!window.__TAURI_INTERNALS__ || mrpackChecking.value) return;
   let picked;
@@ -252,6 +272,7 @@ async function onApplyMrpack() {
   if (!mrpackPreview.value || mrpackPreview.value.incompatible || modsState.applying) return;
   try {
     const outcome = await applyMrpack(mrpackPath.value);
+    refreshPackUpdate();
     if (!outcome) return;
     const already = outcome.already_installed.length;
     pushNotification(already ? `Набор установлен: модов ${outcome.mods}, уже были ${already}` : `Набор установлен: модов ${outcome.mods}`);
@@ -295,6 +316,7 @@ onMounted(() => {
   loadModCatalog();
   loadOfficialPack();
   loadInstalledImportBundle();
+  refreshPackUpdate();
   nextTick(onScroll);
 });
 
@@ -383,9 +405,17 @@ watch(
           </div>
           <div class="mrpack-row">
             <span class="mrpack-label">Набор Modrinth (.mrpack)</span>
-            <button class="secondary-btn" :disabled="mrpackChecking || modsState.applying" @click="onPickMrpack">
-              {{ mrpackChecking ? 'Проверяю...' : 'Выбрать файл' }}
+          </div>
+          <div class="import-row">
+            <input v-model="mrpackLink" type="text" placeholder="Ссылка на набор с modrinth.com" spellcheck="false" @keyup.enter="onLoadMrpackLink" />
+            <button class="secondary-btn" :disabled="!mrpackLink.trim() || mrpackChecking || modsState.applying" @click="onLoadMrpackLink">
+              {{ mrpackChecking ? 'Загружаю...' : 'Загрузить' }}
             </button>
+            <button class="secondary-btn" :disabled="mrpackChecking || modsState.applying" @click="onPickMrpack">Выбрать файл</button>
+          </div>
+          <div v-if="packUpdate && !mrpackPreview" class="import-installed-row">
+            <span>Вышла новая версия набора: {{ packUpdate.current }} → {{ packUpdate.latest }}</span>
+            <button class="secondary-btn" :disabled="mrpackChecking || modsState.applying" @click="onUpdatePack">Обновить</button>
           </div>
           <p v-if="mrpackError" class="error-text">{{ mrpackError }}</p>
           <div class="import-preview-wrap" :class="{ expanded: !!mrpackPreview }">
@@ -734,6 +764,7 @@ watch(
 
 .import-row {
   display: flex;
+  align-items: stretch;
   gap: 8px;
 }
 
@@ -830,9 +861,8 @@ watch(
 .mrpack-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
   margin-top: 14px;
+  margin-bottom: 8px;
   padding-top: 12px;
   border-top: 1px solid var(--border);
 }

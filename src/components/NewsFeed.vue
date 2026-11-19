@@ -112,9 +112,16 @@ onBeforeUnmount(() => clearInterval(checkTimer));
               :style="{ animationDelay: `${i * 45}ms` }"
               @click="openNews(item)"
             >
-              <div class="news-top">
+              <div class="news-author">
+                <div class="author-avatar" v-if="item.authorAvatarUrl">
+                  <img :src="item.authorAvatarUrl" alt="" loading="lazy" />
+                </div>
+                <div class="author-avatar author-avatar-fallback" v-else>{{ (item.author || '?').charAt(0) }}</div>
+                <div class="author-info">
+                  <span class="author-name">{{ item.author }}</span>
+                  <span class="date">{{ item.date }}</span>
+                </div>
                 <span class="tag" :data-tag="item.tag">{{ item.tag }}</span>
-                <span class="date">{{ item.date }}</span>
               </div>
               <h3>
                 <template v-for="(t, ti) in excerptTokens(shortDisplayTitle(cardTitle(item.title)), item.mentions)" :key="ti">
@@ -432,11 +439,62 @@ onBeforeUnmount(() => clearInterval(checkTimer));
   width: 60%;
 }
 
-.news-top {
+.news-author {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 8px;
+  gap: 9px;
+  min-width: 0;
+  margin-bottom: 12px;
+}
+
+.author-avatar {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--surface-2);
+}
+.author-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.author-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+.author-info {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+}
+.author-info .date::before {
+  content: '·';
+  margin-right: 7px;
+  color: var(--text-faint);
+}
+.author-info .date {
+  flex-shrink: 0;
+}
+.author-name {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.news-author .tag {
+  flex: 0 0 auto;
+  margin-left: auto;
 }
 
 .tag {

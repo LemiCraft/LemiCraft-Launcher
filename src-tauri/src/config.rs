@@ -11,7 +11,7 @@ pub const SERVER_PORT: u16 = 25565;
 pub const SERVER_SRV_DOMAIN: &str = "lemicraft.ru";
 
 pub const MC_VERSION: &str = "26.2";
-pub const FABRIC_LOADER: &str = "0.19.5";
+pub const FABRIC_LOADER: &str = "0.20.1";
 
 /// Discord Application ID for Rich Presence; empty disables the feature
 pub const DISCORD_CLIENT_ID: &str = "1469639239099744317";

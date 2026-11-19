@@ -143,11 +143,8 @@ pub async fn get_more_news(before: String) -> Result<NewsPage, String> {
 }
 
 async fn get_news_live(before: Option<String>) -> Result<NewsPage, String> {
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|err| err.to_string())?;
-    let mut req = client.get(news_api_url()).query(&[("limit", "8")]);
+    let client = crate::http::asynchronous();
+    let mut req = client.get(news_api_url()).timeout(std::time::Duration::from_secs(15)).query(&[("limit", "8")]);
     if let Some(before) = &before {
         req = req.query(&[("before", before.as_str())]);
     }

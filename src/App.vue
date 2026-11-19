@@ -15,12 +15,13 @@ import UpdateModal from './components/UpdateModal.vue';
 import ConfirmDialog from './components/ConfirmDialog.vue';
 import LoginOverlay from './components/LoginOverlay.vue';
 import { accountStore, refreshAccount } from './store/account.js';
-import { clearProfile } from './store/profile.js';
+import { clearProfile, profileView } from './store/profile.js';
 import { startInstallListeners } from './store/installProgress.js';
 import { skinsState, startElybyLoginListeners } from './store/skins.js';
 import { checkForUpdate } from './store/update.js';
 import { modsState, startModsProgressListener, startDeepLinkListener } from './store/mods.js';
 import { startViolationsWatcher } from './store/violations.js';
+import { startNotifyWatcher } from './store/notifyWatch.js';
 
 const isLogsWindow = ref(false);
 const windowResolved = ref(!window.__TAURI_INTERNALS__);
@@ -54,7 +55,7 @@ watch(
   () => [accountStore.loggedIn, accountStore.uuid, accountStore.provider],
   ([loggedIn, uuid, provider], [wasLoggedIn, wasUuid, wasProvider]) => {
     if (wasLoggedIn && (!loggedIn || uuid !== wasUuid || provider !== wasProvider)) clearProfile();
-    if (!loggedIn && !accountStore.checking && active.value === 'profile') active.value = 'home';
+    if (!loggedIn && !accountStore.checking && active.value === 'profile' && !profileView.nick) active.value = 'home';
   },
 );
 
@@ -88,6 +89,7 @@ onMounted(async () => {
     startModsProgressListener();
     startDeepLinkListener();
     startViolationsWatcher();
+    startNotifyWatcher();
     syncDiscordPage(active.value);
   }
 });
@@ -120,7 +122,7 @@ onMounted(async () => {
             <ModsView v-else-if="active === 'mods'" key="mods" />
             <RulesView v-else-if="active === 'rules'" key="rules" />
             <SettingsView v-else-if="active === 'settings'" key="settings" />
-            <ProfileView v-else-if="active === 'profile'" key="profile" />
+            <ProfileView v-else-if="active === 'profile'" :key="`profile:${profileView.nick}`" :nick="profileView.nick" />
           </Transition>
         </main>
       </div>

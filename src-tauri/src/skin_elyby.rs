@@ -11,10 +11,7 @@ use crate::game::game_dir;
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
 
 fn timed_client() -> reqwest::blocking::Client {
-    reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .unwrap_or_default()
+    crate::http::blocking()
 }
 
 fn skin_session_path() -> PathBuf {

@@ -1,7 +1,6 @@
 // The player's profile from the site's launcher endpoint (the token says whose); without it, the public data
 // (roles, ban) is shown without statistics.
 use std::path::Path;
-use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
@@ -176,7 +175,7 @@ pub async fn get_cached_profile() -> Option<Profile> {
 }
 
 fn client() -> Result<reqwest::blocking::Client, String> {
-    reqwest::blocking::Client::builder().timeout(Duration::from_secs(10)).build().map_err(|err| err.to_string())
+    Ok(crate::http::blocking())
 }
 
 // None: the site has no launcher endpoint for the profile yet
@@ -233,6 +232,41 @@ pub async fn get_profile() -> Result<Profile, String> {
         };
         write_cache(&cache_path(), &uuid, &profile);
         Ok(profile)
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+fn valid_nick(nick: &str) -> bool {
+    (1..=16).contains(&nick.len()) && nick.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+}
+
+/// Another player's profile: only what the site shows to everyone (no statistics)
+#[tauri::command]
+pub async fn get_player_profile(nick: String) -> Result<Profile, String> {
+    if !valid_nick(&nick) {
+        return Err("Игрок не найден".to_string());
+    }
+    tauri::async_runtime::spawn_blocking(move || from_public_data(&client()?, &nick)).await.map_err(|err| err.to_string())?
+}
+
+fn online_from_stats(stats: &serde_json::Value) -> Vec<String> {
+    stats
+        .get("onlinePlayers")
+        .and_then(|v| v.as_array())
+        .map(|list| list.iter().filter_map(|v| v.as_str()).filter(|nick| valid_nick(nick)).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
+/// Everyone who is on the server now, as the site knows it (the ping of the server names only a few)
+#[tauri::command]
+pub async fn get_online_players() -> Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let res = client()?.get(format!("{}/server-stats", crate::config::API_BASE)).send().map_err(|err| err.to_string())?;
+        if !res.status().is_success() {
+            return Err(format!("Не удалось узнать, кто в игре ({})", res.status()));
+        }
+        Ok(online_from_stats(&res.json().map_err(|err| err.to_string())?))
     })
     .await
     .map_err(|err| err.to_string())?
@@ -300,6 +334,13 @@ mod tests {
         for failed in [400, 401, 403, 429, 500, 502, 503] {
             assert_eq!(classify(failed), Answer::Failed, "{failed}");
         }
+    }
+
+    #[test]
+    fn only_real_nicknames_come_out_of_the_online_list() {
+        let stats = serde_json::json!({"online": 3, "onlinePlayers": ["Morgan_White", "../admin", "", 5, "KOTOKOPOLb", "seventeen_letters_"]});
+        assert_eq!(online_from_stats(&stats), vec!["Morgan_White", "KOTOKOPOLb"]);
+        assert!(online_from_stats(&serde_json::json!({})).is_empty());
     }
 
     #[test]

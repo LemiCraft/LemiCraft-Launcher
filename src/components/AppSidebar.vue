@@ -5,6 +5,7 @@ import { useLogin } from '../composables/useLogin.js';
 import { updateState } from '../store/update.js';
 import { violationsState } from '../store/violations.js';
 import { rulesState } from '../store/rules.js';
+import { profileView } from '../store/profile.js';
 import SkinFace from './SkinFace.vue';
 import MacTrafficLights from './MacTrafficLights.vue';
 import { isMac } from '../utils/platform.js';
@@ -92,6 +93,7 @@ function activateQuickLink(link) {
 }
 
 function openPersonalAccount() {
+  profileView.nick = '';
   emit('navigate', 'profile');
   menuOpen.value = false;
 }

@@ -83,10 +83,7 @@ fn bind_callback_port(port: u16) -> Result<TcpListener, String> {
 }
 
 fn run_login(app: &AppHandle, attempt: u64) -> Result<(), String> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .map_err(|err| err.to_string())?;
+    let client = crate::http::blocking();
 
     let auth = client
         .get(format!("{API_BASE}/auth/ely/url"))

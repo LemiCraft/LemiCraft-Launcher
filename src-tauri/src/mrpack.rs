@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter};
 
 use crate::game::minecraft_dir;
-use crate::mods::{load_import_bundle_state, save_import_bundle_state, ImportBundleState};
+use crate::mods::{load_import_bundle_state, save_import_bundle_state, ImportBundleState, PackSource};
 
 // Only these folders of the game directory are touched: not options.txt, not servers.dat (the launcher keeps
 // the LemiCraft entry there), nothing outside the game directory
@@ -626,6 +626,125 @@ fn staged_pack_path() -> PathBuf {
     crate::game::game_dir().join("incoming.mrpack")
 }
 
+// ---- a pack by its Modrinth link
+
+/// The project of a link like https://modrinth.com/modpack/<slug>/..., or of a bare slug or id
+fn modrinth_project(input: &str) -> Option<String> {
+    let input = input.trim();
+    let slug = match input.split_once("modrinth.com/") {
+        Some((_, rest)) => {
+            let mut parts = rest.split(['/', '?', '#']).filter(|p| !p.is_empty());
+            let kind = parts.next()?;
+            if !matches!(kind, "modpack" | "project") {
+                return None;
+            }
+            parts.next()?
+        }
+        None => input,
+    };
+    let ok = (2..=64).contains(&slug.len()) && slug.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_');
+    ok.then(|| slug.to_string())
+}
+
+#[derive(Deserialize)]
+struct ModrinthVersion {
+    id: String,
+    version_number: String,
+    #[serde(default)]
+    files: Vec<ModrinthFile>,
+}
+
+#[derive(Deserialize)]
+struct ModrinthFile {
+    url: String,
+    filename: String,
+    #[serde(default)]
+    primary: bool,
+    #[serde(default)]
+    size: u64,
+}
+
+/// The newest version for this game and loader (the list comes newest first), with its pack file
+fn pick_pack_version(versions: Vec<ModrinthVersion>) -> Option<(PackVersion, String, u64)> {
+    versions.into_iter().find_map(|version| {
+        let packs: Vec<&ModrinthFile> = version.files.iter().filter(|f| f.filename.ends_with(".mrpack") && url_allowed(&f.url)).collect();
+        let file = packs.iter().find(|f| f.primary).or(packs.first())?;
+        Some((PackVersion { id: version.id.clone(), number: version.version_number.clone() }, file.url.clone(), file.size))
+    })
+}
+
+struct PackVersion {
+    id: String,
+    number: String,
+}
+
+fn latest_pack_version(fetcher: &HttpFetch, project: &str) -> Result<(PackVersion, String, u64), String> {
+    let url = format!("https://api.modrinth.com/v2/project/{project}/version");
+    let res = fetcher
+        .0
+        .get(url)
+        .header(reqwest::header::USER_AGENT, concat!("LemiCraft-Launcher/", env!("CARGO_PKG_VERSION")))
+        .query(&[("loaders", "[\"fabric\"]".to_string()), ("game_versions", format!("[\"{}\"]", crate::config::MC_VERSION))])
+        .timeout(Duration::from_secs(20))
+        .send()
+        .map_err(|err| format!("Modrinth не отвечает: {err}"))?;
+    if res.status().as_u16() == 404 {
+        return Err("Такого набора на Modrinth нет".to_string());
+    }
+    if !res.status().is_success() {
+        return Err(format!("Modrinth ответил ошибкой ({})", res.status()));
+    }
+    let versions: Vec<ModrinthVersion> = res.json().map_err(|err| format!("Не удалось разобрать ответ Modrinth: {err}"))?;
+    pick_pack_version(versions).ok_or_else(|| format!("У набора нет версии для Minecraft {} на Fabric", crate::config::MC_VERSION))
+}
+
+fn staged_source_path() -> PathBuf {
+    crate::game::game_dir().join("incoming.mrpack.source.json")
+}
+
+/// Downloads the newest fitting version of a pack by its link; then it is previewed and installed like a file
+#[tauri::command]
+pub async fn stage_modrinth_pack(link: String) -> Result<String, String> {
+    let project = modrinth_project(&link).ok_or("Это не похоже на ссылку на набор Modrinth")?;
+    let lock = ImportLock::acquire()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lock = lock;
+        let fetcher = HttpFetch::new()?;
+        let (version, url, size) = latest_pack_version(&fetcher, &project)?;
+        if size > MAX_DROPPED_PACK_BYTES as u64 {
+            return Err("Файл набора слишком большой".to_string());
+        }
+        let path = staged_pack_path();
+        std::fs::create_dir_all(crate::game::game_dir()).map_err(|err| err.to_string())?;
+        fetcher.fetch(&url, &path, MAX_DROPPED_PACK_BYTES as u64).map_err(|err| format!("Не удалось скачать набор: {err}"))?;
+        let source = PackSource { project, version_id: version.id, version_number: version.number };
+        let json = serde_json::to_string(&source).map_err(|err| err.to_string())?;
+        std::fs::write(staged_source_path(), json).map_err(|err| err.to_string())?;
+        Ok(path.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[derive(Serialize)]
+pub struct PackUpdate {
+    project: String,
+    current: String,
+    latest: String,
+}
+
+/// A newer version of the installed pack, when it was installed by a link and one is out
+#[tauri::command]
+pub async fn check_modrinth_pack_update() -> Option<PackUpdate> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let source = load_import_bundle_state()?.source?;
+        let (latest, _, _) = latest_pack_version(&HttpFetch::new().ok()?, &source.project).ok()?;
+        (latest.id != source.version_id).then(|| PackUpdate { project: source.project, current: source.version_number, latest: latest.number })
+    })
+    .await
+    .unwrap_or(None)
+}
+
 #[tauri::command]
 pub async fn stage_mrpack(request: tauri::ipc::Request<'_>) -> Result<String, String> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
@@ -641,6 +760,7 @@ pub async fn stage_mrpack(request: tauri::ipc::Request<'_>) -> Result<String, St
         let path = staged_pack_path();
         std::fs::create_dir_all(crate::game::game_dir()).map_err(|err| err.to_string())?;
         std::fs::write(&path, bytes).map_err(|err| format!("Не удалось сохранить файл: {err}"))?;
+        let _ = std::fs::remove_file(staged_source_path());
         Ok(path.to_string_lossy().to_string())
     })
     .await
@@ -685,10 +805,14 @@ pub async fn apply_mrpack(app: AppHandle, path: String) -> Result<Outcome, Strin
         if outcome.files.is_empty() {
             return Err("В наборе нечего устанавливать: всё уже есть или не подходит".to_string());
         }
-        save_import_bundle_state(&ImportBundleState { files: outcome.files.clone(), mod_ids: outcome.mod_ids.clone() })?;
-        // a dropped pack was only kept for this; a failed import keeps it, so that it can be tried again
-        if Path::new(&path) == staged_pack_path() {
+        // the source belongs to the staged file it was downloaded as, never to a file chosen from the disk
+        let staged = Path::new(&path) == staged_pack_path();
+        let source = if staged { std::fs::read_to_string(staged_source_path()).ok().and_then(|json| serde_json::from_str::<PackSource>(&json).ok()) } else { None };
+        save_import_bundle_state(&ImportBundleState { files: outcome.files.clone(), mod_ids: outcome.mod_ids.clone(), source })?;
+        // a staged pack was only kept for this; a failed import keeps it, so that it can be tried again
+        if staged {
             let _ = std::fs::remove_file(&path);
+            let _ = std::fs::remove_file(staged_source_path());
         }
         Ok(outcome)
     })
@@ -1018,6 +1142,36 @@ mod tests {
         let fetcher = write_pack(&dirs, DEPS, &[Entry { path: "mods/new.jar", body: jar_with_id("new") }], &[]);
         install(&dirs, &fetcher, &["options.txt"]).unwrap();
         assert!(dirs.game().join("options.txt").is_file());
+    }
+
+    #[test]
+    fn a_modrinth_link_gives_its_project() {
+        for (input, project) in [
+            ("https://modrinth.com/modpack/fabulously-optimized", "fabulously-optimized"),
+            ("https://modrinth.com/modpack/fabulously-optimized/version/6.4.0", "fabulously-optimized"),
+            ("modrinth.com/modpack/simply_optimized?foo=1", "simply_optimized"),
+            ("  1KVo5zza ", "1KVo5zza"),
+        ] {
+            assert_eq!(modrinth_project(input).as_deref(), Some(project), "{input}");
+        }
+        for input in ["", "https://modrinth.com/mod/sodium", "https://modrinth.com/modpack/", "https://example.com/a/b", "a b", "../x"] {
+            assert_eq!(modrinth_project(input), None, "{input}");
+        }
+    }
+
+    #[test]
+    fn the_newest_version_with_a_pack_file_from_an_allowed_host_is_taken() {
+        let versions: Vec<ModrinthVersion> = serde_json::from_str(
+            r#"[
+            {"id":"v3","version_number":"3.0","files":[{"url":"https://evil.example/p.mrpack","filename":"p.mrpack","primary":true}]},
+            {"id":"v2","version_number":"2.0","files":[{"url":"https://cdn.modrinth.com/a.zip","filename":"a.zip"},{"url":"https://cdn.modrinth.com/p2.mrpack","filename":"p2.mrpack","size":10}]},
+            {"id":"v1","version_number":"1.0","files":[{"url":"https://cdn.modrinth.com/p1.mrpack","filename":"p1.mrpack","primary":true}]}
+        ]"#,
+        )
+        .unwrap();
+        let (version, url, size) = pick_pack_version(versions).unwrap();
+        assert_eq!((version.id.as_str(), version.number.as_str(), url.as_str(), size), ("v2", "2.0", "https://cdn.modrinth.com/p2.mrpack", 10));
+        assert!(pick_pack_version(Vec::new()).is_none());
     }
 
     #[test]

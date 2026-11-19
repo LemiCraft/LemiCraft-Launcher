@@ -7,6 +7,25 @@ export const profileState = reactive({
   error: '',
 });
 
+// Whose profile the page shows: '' is the signed-in player's own
+export const profileView = reactive({ nick: '' });
+
+// Everyone on the server now, for the list on the play card
+export const onlineState = reactive({ players: [], loadedAt: 0 });
+const ONLINE_FRESH_MS = 30 * 1000;
+
+export async function loadOnlinePlayers() {
+  if (!window.__TAURI_INTERNALS__ || Date.now() - onlineState.loadedAt < ONLINE_FRESH_MS) return;
+  onlineState.loadedAt = Date.now();
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    onlineState.players = await invoke('get_online_players');
+  } catch (err) {
+    onlineState.loadedAt = 0;
+    console.error('failed to load the online players:', err);
+  }
+}
+
 const REFRESH_AFTER_MS = 60 * 1000;
 let lastLoadedAt = 0;
 let request = 0;
