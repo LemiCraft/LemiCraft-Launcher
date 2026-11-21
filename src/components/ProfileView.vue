@@ -237,8 +237,8 @@ onBeforeUnmount(() => {
     <div class="head">
       <h1>{{ isOther ? 'Профиль игрока' : 'Профиль' }}</h1>
       <button class="refresh" :disabled="view.loading" @click="reload(true)">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z" /></svg>
-        <span class="label-slot"><Transition name="label-swap" mode="out-in"><span :key="view.loading">{{ view.loading ? 'Обновляю...' : 'Обновить' }}</span></Transition></span>
+        <svg :class="{ spinning: view.loading }" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z" /></svg>
+        Обновить
       </button>
     </div>
 
@@ -391,30 +391,6 @@ onBeforeUnmount(() => {
   color: var(--text);
 }
 /* the label of a button that changes: the old word fades out, the new one comes in, the button does not jump */
-.label-swap-enter-active {
-  transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-.label-swap-leave-active {
-  transition: opacity 0.1s ease;
-}
-.label-swap-enter-from {
-  opacity: 0;
-  transform: translateY(3px);
-}
-.label-swap-leave-to {
-  opacity: 0;
-}
-.label-slot {
-  display: inline-block;
-  min-width: 78px;
-  text-align: left;
-}
-@media (prefers-reduced-motion: reduce) {
-  .label-swap-enter-active,
-  .label-swap-leave-active {
-    transition: none;
-  }
-}
 .refresh {
   display: inline-flex;
   align-items: center;
@@ -425,7 +401,7 @@ onBeforeUnmount(() => {
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, transform var(--d-fast) var(--ease-out);
   min-height: 28px;
   padding: 0 10px;
   border-radius: 8px;
@@ -797,7 +773,7 @@ onBeforeUnmount(() => {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, opacity 0.15s ease;
+  transition: background 0.15s ease, opacity 0.15s ease, transform var(--d-fast) var(--ease-out);
   min-height: 36px;
 }
 .retry:hover:not(:disabled) {

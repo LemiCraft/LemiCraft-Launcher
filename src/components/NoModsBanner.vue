@@ -37,21 +37,48 @@ function dismiss() {
 </script>
 
 <template>
-  <Transition name="banner">
-    <div v-if="visible" class="banner">
-      <button class="close-btn" @click="dismiss">
-        <svg viewBox="0 0 10 10" width="11" height="11"><path d="M0.5 0.5 9.5 9.5M9.5 0.5 0.5 9.5" stroke="currentColor" stroke-width="1.3"/></svg>
-      </button>
-      <div class="banner-text">
-        <strong>Играете без модов?</strong>
-        <p>На сервере есть голосовой чат PlasmaVoice и другие удобства — попробуйте нашу сборку для оптимизации и комфортной игры</p>
+  <!-- the place is always there and opens and closes in height, so that the news below slide instead of jumping -->
+  <div class="banner-slot" :class="{ open: visible }">
+    <div class="banner-clip">
+      <div class="banner">
+        <button class="close-btn" @click="dismiss">
+          <svg viewBox="0 0 10 10" width="11" height="11"><path d="M0.5 0.5 9.5 9.5M9.5 0.5 0.5 9.5" stroke="currentColor" stroke-width="1.3"/></svg>
+        </button>
+        <div class="banner-text">
+          <strong>Играете без модов?</strong>
+          <p>На сервере есть голосовой чат PlasmaVoice и другие удобства — попробуйте нашу сборку для оптимизации и комфортной игры</p>
+        </div>
+        <button class="cta-btn" @click="goToMods">Перейти к модам</button>
       </div>
-      <button class="cta-btn" @click="goToMods">Перейти к модам</button>
     </div>
-  </Transition>
+  </div>
 </template>
 
 <style scoped>
+/* closed it has no height, and a negative margin takes back the gap of the page that it would otherwise leave */
+.banner-slot {
+  display: grid;
+  grid-template-rows: 0fr;
+  margin-bottom: -20px;
+  opacity: 0;
+  transition: grid-template-rows var(--d-slow) var(--ease-move), margin-bottom var(--d-slow) var(--ease-move), opacity var(--d-base) ease;
+}
+.banner-slot.open {
+  grid-template-rows: 1fr;
+  margin-bottom: 0;
+  opacity: 1;
+}
+.banner-clip {
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  transition: visibility 0s var(--d-slow);
+}
+.banner-slot.open .banner-clip {
+  visibility: visible;
+  transition-delay: 0s;
+}
+
 .banner {
   display: flex;
   align-items: center;
@@ -117,20 +144,5 @@ function dismiss() {
   color: var(--text);
 }
 
-.banner-enter-active,
-.banner-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
-}
-.banner-enter-from,
-.banner-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
-}
 
-@media (prefers-reduced-motion: reduce) {
-  .banner-enter-active,
-  .banner-leave-active {
-    transition: none;
-  }
-}
 </style>

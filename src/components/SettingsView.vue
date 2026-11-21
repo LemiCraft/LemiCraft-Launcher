@@ -96,8 +96,6 @@ function onResetGameDir() {
   pushNotification('Папка с игрой сброшена');
 }
 
-const DEFAULT_JVM_ARGS = '-XX:+UseG1GC -XX:+UnlockExperimentalVMOptions';
-
 // Memory and flags in one choice: it sets both, and any change by hand makes it "own"
 const activeProfile = computed(() => profileOf(ram.value, jvmArgs.value, ramMax.value));
 const suggestedProfile = computed(() => recommendedProfile(ramMax.value));
@@ -112,9 +110,12 @@ function chooseProfile(profile) {
   });
 }
 
+// the reset is the usual profile, flags and memory both, so that the profile shows "Обычный" and not "Свой"
 function onResetJvmArgs() {
-  jvmArgs.value = DEFAULT_JVM_ARGS;
-  pushNotification('Аргументы JVM сброшены');
+  const usual = JVM_PROFILES.find((profile) => profile.id === 'normal');
+  ram.value = Math.min(profileRam(usual, ramMax.value), ramMax.value);
+  jvmArgs.value = usual.args;
+  pushNotification('Выбран профиль «Обычный»');
 }
 
 const ON_LAUNCH_OPTIONS = [
@@ -371,7 +372,7 @@ onUnmounted(() => {
         </div>
         <div class="path-row">
           <input type="text" class="text-input mono" v-model="jvmArgs" aria-label="Аргументы JVM" spellcheck="false" />
-          <ArmedResetButton title="Сбросить к значению по умолчанию" @confirm="onResetJvmArgs" />
+          <ArmedResetButton title="Вернуть профиль «Обычный»" @confirm="onResetJvmArgs" />
         </div>
       </div>
       <div class="row row-col">
@@ -767,7 +768,7 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, transform var(--d-fast) var(--ease-out);
   min-height: 36px;
   display: inline-flex;
   align-items: center;

@@ -1,4 +1,5 @@
 <script setup>
+import SkinFace from './SkinFace.vue';
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { accountStore } from '../store/account.js';
 import { tourState } from '../store/tour.js';
@@ -269,10 +270,10 @@ async function onConfirmElybyLogin() {
       </div>
       <div v-if="accountStore.loggedIn && !needsElybyLogin" class="head-actions">
         <button class="refresh" :disabled="refreshing || skinsState.loading" @click="onRefresh">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z"/></svg>
-          {{ refreshing ? 'Обновляю...' : 'Обновить' }}
+          <svg :class="{ spinning: refreshing || skinsState.loading }" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z"/></svg>
+          Обновить
         </button>
-        <button class="upload-btn" data-tour="upload-skin" @click="openUploadModal">
+        <button v-if="skinsState.items.length > 0 || feedState !== 'content'" class="upload-btn" data-tour="upload-skin" @click="openUploadModal">
           <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 3l5 5h-3v6h-4V8H7l5-5Zm-7 14h14v2H5v-2Z"/></svg>
           Загрузить скин
         </button>
@@ -314,9 +315,11 @@ async function onConfirmElybyLogin() {
 
           <p v-else-if="feedState === 'error'" key="error" class="error-text standalone">{{ skinsState.error }}</p>
 
-          <div v-else-if="skinsState.items.length === 0" key="empty" class="empty-state">
-            <p>Скинов пока нет. Загрузите файл со скином, и он появится здесь</p>
-            <button class="upload-btn empty-upload" @click="openUploadModal">Загрузить скин</button>
+          <div v-else-if="skinsState.items.length === 0" key="empty" class="empty-state empty-library">
+            <SkinFace v-if="accountStore.skinUrl" class="empty-face" :url="accountStore.skinUrl" :size="64" :radius="14" />
+            <h3>Здесь появятся ваши скины</h3>
+            <p>Загрузите файл .png со скином или перетащите его в окно</p>
+            <button class="upload-btn empty-upload" data-tour="upload-skin" @click="openUploadModal">Загрузить скин</button>
           </div>
 
           <TransitionGroup v-else key="content" name="card" tag="div" class="grid">
@@ -460,7 +463,7 @@ async function onConfirmElybyLogin() {
   cursor: pointer;
   padding: 0 10px;
   border-radius: 8px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, transform var(--d-fast) var(--ease-out);
   min-height: 28px;
 }
 .refresh:hover:not(:disabled) {
@@ -473,7 +476,21 @@ async function onConfirmElybyLogin() {
 }
 
 .empty-upload {
-  margin: 14px auto 0;
+  margin: 16px auto 0;
+}
+.empty-library {
+  padding: 36px 20px 32px;
+  border-color: rgba(255, 255, 255, 0.14);
+  background: radial-gradient(ellipse at 50% 0%, var(--accent-soft), transparent 70%);
+}
+.empty-library h3 {
+  margin: 12px 0 4px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text);
+}
+.empty-face {
+  margin: 0 auto;
 }
 .upload-btn {
   display: flex;
@@ -487,7 +504,7 @@ async function onConfirmElybyLogin() {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, transform var(--d-fast) var(--ease-out);
   flex-shrink: 0;
   min-height: 36px;
 }

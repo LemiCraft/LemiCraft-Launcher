@@ -69,6 +69,19 @@ pub fn stop_game(app: AppHandle, process: tauri::State<GameProcess>) -> Result<(
 
 // Own config (settings, account, ely.by session) always lives here, never in minecraft_dir(). Debug builds use
 // a separate folder; release must match the old C# launcher's for old_launcher_profile_path() (auth.rs)
+/// Java4Shell (CVE-2026-114938) lives in the x86-64 Base64 intrinsic of Java 17 to 27 and is fixed in 25.0.5.1.
+/// The runtime of Mojang is checked by its `release` file; when it cannot be read the workaround stays on.
+fn base64_workaround_needed(release: &Option<String>) -> bool {
+    const FIXED: [u32; 4] = [25, 0, 5, 1];
+    let version: Vec<u32> = release
+        .as_deref()
+        .and_then(|text| text.lines().find_map(|line| line.strip_prefix("JAVA_VERSION=")))
+        .map(|value| value.trim_matches('"').split(|c: char| !(c.is_ascii_digit() || c == '.')).next().unwrap_or(""))
+        .map(|value| value.split('.').map_while(|part| part.parse().ok()).collect())
+        .unwrap_or_default();
+    version.first() != Some(&25) || version.as_slice() < FIXED.as_slice()
+}
+
 pub(crate) fn game_dir() -> PathBuf {
     let folder = if cfg!(debug_assertions) { "LemiCraftLauncherDev" } else { "LemiCraft" };
     dirs::data_dir().unwrap_or_else(std::env::temp_dir).join(folder)
@@ -228,6 +241,9 @@ fn run(app: &AppHandle, username: String, process: Arc<Mutex<Option<Child>>>) ->
                     }
                 }
 
+                if cfg!(target_arch = "x86_64") && base64_workaround_needed(&std::fs::read_to_string(game_dir().join("jvm").join("java-runtime-epsilon").join("release")).ok()) {
+                    game.jvm_args.push("-XX:-UseBASE64Intrinsics".to_string());
+                }
                 game.jvm_args.push(format!("-Xmx{}G", settings.ram_gb));
                 game.jvm_args.push(format!("-Xms{}G", settings.ram_gb.min(2)));
                 game.jvm_args.extend(
@@ -737,6 +753,21 @@ fn patch_real_session_args(game_args: &mut [String], real_access_token: &str) {
 
 #[cfg(test)]
 mod authlib_tests {
+    #[test]
+    fn the_base64_workaround_goes_away_with_the_patched_runtime() {
+        let release = |version: &str| Some(format!("IMPLEMENTOR=\"x\"
+JAVA_VERSION=\"{version}\"
+MODULES=\"java.base\"
+"));
+        assert!(super::base64_workaround_needed(&release("25.0.1")));
+        assert!(super::base64_workaround_needed(&release("25.0.5")));
+        assert!(!super::base64_workaround_needed(&release("25.0.5.1")));
+        assert!(!super::base64_workaround_needed(&release("25.0.6")));
+        assert!(super::base64_workaround_needed(&release("21.0.13.1")));
+        assert!(super::base64_workaround_needed(&None));
+        assert!(super::base64_workaround_needed(&Some("nothing".to_string())));
+    }
+
     use super::*;
     use std::io::{Read, Write};
 

@@ -1,7 +1,7 @@
 <script setup>
 import { tourState } from '../store/tour.js';
 import { useFocusTrap } from '../composables/useFocusTrap.js';
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { accountStore } from '../store/account.js';
 import { useLogin } from '../composables/useLogin.js';
 import { updateState } from '../store/update.js';
@@ -162,11 +162,28 @@ async function handleLogout() {
   menuOpen.value = false;
 }
 
-defineProps({
+const props = defineProps({
   active: { type: String, required: true },
   maximized: { type: Boolean, default: false },
 });
 const emit = defineEmits(['navigate', 'window-close', 'window-minimize', 'window-maximize']);
+
+// one highlight slides to the item of the page, instead of each item lighting up by itself
+const navEl = ref(null);
+const pill = reactive({ y: 0, h: 0, show: false, ready: false });
+function placePill() {
+  const el = navEl.value?.querySelector('.nav-item.active');
+  pill.show = !!el;
+  if (!el) return;
+  pill.y = el.offsetTop;
+  pill.h = el.offsetHeight;
+}
+watch(() => props.active, () => nextTick(placePill));
+onMounted(() => {
+  placePill();
+  // the first place is taken without a slide
+  requestAnimationFrame(() => { pill.ready = true; });
+});
 
 const items = [
   { id: 'home', label: 'Главная', icon: 'M4 11.5 12 4l8 7.5V20a1 1 0 0 1-1 1h-4.5v-6h-5v6H5a1 1 0 0 1-1-1Z' },
@@ -184,7 +201,7 @@ async function openExternal(target) {
 const quickLinks = [
   { id: 'rules', title: 'Правила', icon: profileRulesIcon, action: () => emit('navigate', 'rules') },
   { id: 'wiki', title: 'Вики', icon: profileWikiIcon, action: () => openExternal('https://wiki.lemicraft.ru') },
-  { id: 'folder', title: 'Папка игры', icon: profileFolderIcon, action: async () => {
+  { id: 'folder', title: 'Папка', icon: profileFolderIcon, action: async () => {
     if (!window.__TAURI_INTERNALS__) return;
     const { invoke } = await import('@tauri-apps/api/core');
     await invoke('open_game_folder');
@@ -214,7 +231,8 @@ const quickLinks = [
       <span class="brand-name" data-tauri-drag-region>Lemi<b>Craft</b></span>
     </div>
 
-    <nav class="nav">
+    <nav ref="navEl" class="nav">
+      <span class="nav-pill" :class="{ show: pill.show, ready: pill.ready }" :style="{ '--y': pill.y + 'px', '--h': pill.h + 'px' }" aria-hidden="true"></span>
       <button
         v-for="item in items"
         :key="item.id"
@@ -274,7 +292,7 @@ const quickLinks = [
           </div>
 
           <button v-if="accountStore.loggedIn" class="menu-account-link" @click="openPersonalAccount">
-            Личный кабинет
+            Профиль
           </button>
 
           <div v-else class="guest-login">
@@ -344,7 +362,7 @@ const quickLinks = [
         </div>
       </Transition>
 
-      <button class="account" data-tour="account" @click="toggleMenu">
+      <button class="account" :class="{ here: active === 'profile' || active === 'rules' }" data-tour="account" @click="toggleMenu">
         <!-- the old and the new picture and text sit in the same place while they cross-fade, so nothing around them moves -->
         <div class="account-avatar-slot">
           <Transition name="account-fade">
@@ -433,10 +451,31 @@ const quickLinks = [
 }
 
 .nav {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 2px;
   flex: 1;
+}
+
+.nav-pill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--h);
+  transform: translateY(var(--y));
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  opacity: 0;
+  pointer-events: none;
+}
+.nav-pill.show {
+  opacity: 1;
+}
+.nav-pill.ready {
+  transition: transform var(--d-base) var(--ease-move), height var(--d-base) var(--ease-move), opacity var(--d-fast) ease;
 }
 
 .nav-item {
@@ -463,14 +502,14 @@ const quickLinks = [
   color: var(--text);
 }
 
-.nav-item.active {
-  background: var(--accent-soft);
+.nav-item.active,
+.nav-item.active:hover {
+  background: transparent;
   color: var(--accent);
-  border-left-color: var(--accent);
 }
 
 .nav-item svg {
-  transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  transition: transform var(--d-base) var(--ease-out);
   flex-shrink: 0;
 }
 .nav-item:active svg {
@@ -594,7 +633,7 @@ const quickLinks = [
   background: var(--surface);
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, box-shadow var(--d-slow) var(--ease-out);
 }
 .account:hover {
   background: var(--surface-hover);
@@ -868,6 +907,9 @@ const quickLinks = [
   font: 700 11px/1.1 var(--font-body);
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.account.here {
+  box-shadow: inset 0 0 0 1px rgba(255, 95, 95, 0.55);
 }
 .quick-link-card:hover {
   background: var(--surface-hover);

@@ -191,7 +191,7 @@ onUnmounted(() => {
     <ProviderBanner />
 
     <div class="hero-main">
-      <span class="eyebrow" :class="{ pending: !serverStatus.loaded }">
+      <span class="eyebrow" :class="{ pending: !serverStatus.loaded, offline: serverStatus.loaded && !serverStatus.online }">
         <span class="dot" :class="{ off: serverStatus.loaded && !serverStatus.online }"></span>
         {{ !serverStatus.loaded ? 'Проверка сервера...' : serverStatus.online ? 'Сервер онлайн' : 'Сервер офлайн' }}
       </span>
@@ -292,7 +292,13 @@ onUnmounted(() => {
             MC {{ serverStatus.version }}
           </span>
         </div>
-        <div v-else-if="!serverStatus.loaded" key="loading" class="chips">
+        <div v-else-if="serverStatus.loaded" key="offline" class="chips">
+          <button type="button" class="chip retry-chip" :disabled="serverStatus.checking" @click="recheckServerStatus">
+            <svg class="retry-icon" :class="{ spinning: serverStatus.checking }" viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z" /></svg>
+            {{ serverStatus.checking ? 'Проверяю...' : 'Проверить снова' }}
+          </button>
+        </div>
+        <div v-else key="loading" class="chips">
           <span class="chip-skeleton online-skeleton"></span>
           <span class="chip-skeleton"></span>
           <span class="chip-skeleton short"></span>
@@ -373,6 +379,7 @@ onUnmounted(() => {
   background: var(--bad);
   box-shadow: 0 0 0 3px var(--bad-soft);
 }
+.eyebrow.offline { color: #ffb4b4; }
 .eyebrow.pending { color: var(--text-faint); }
 .eyebrow.pending .dot {
   background: var(--text-faint);
@@ -397,17 +404,19 @@ h1 {
 }
 
 .play-btn {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 9px;
   margin-top: 6px;
-  padding: 13px 28px;
+  padding: 14px 30px;
   border-radius: 12px;
   border: none;
-  background: var(--accent);
+  /* a light edge on top gives the button volume */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0) 55%), var(--accent);
   color: var(--accent-text-on);
   font-family: var(--font-display);
-  font-size: 15.5px;
+  font-size: 16.5px;
   font-weight: 700;
   cursor: pointer;
   box-shadow: 0 12px 24px -10px rgba(255, 95, 95, 0.55);
@@ -415,7 +424,7 @@ h1 {
   transition: background 0.25s ease, box-shadow 0.3s ease, transform 0.28s cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 .play-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0) 55%), var(--accent-hover);
   box-shadow: 0 14px 28px -10px rgba(255, 95, 95, 0.7);
   transform: scale(1.02);
 }
@@ -442,6 +451,30 @@ h1 {
   to {
     transform: rotate(360deg);
   }
+}
+
+/* a slow glow while the game is ready; opacity only, so that it stays cheap */
+.play-btn::before {
+  content: '';
+  position: absolute;
+  inset: -10px -14px;
+  z-index: -1;
+  border-radius: 22px;
+  background: radial-gradient(closest-side, rgba(255, 95, 95, 0.5), transparent 75%);
+  opacity: 0.35;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .play-btn:not(:disabled)::before {
+    animation: play-glow 3.2s ease-in-out infinite;
+  }
+}
+.play-btn:disabled::before {
+  display: none;
+}
+@keyframes play-glow {
+  0%, 100% { opacity: 0.25; }
+  50% { opacity: 0.7; }
 }
 
 .play-btn.running {
@@ -488,6 +521,21 @@ h1 {
 }
 .chip.mono {
   font-family: var(--font-mono);
+}
+.retry-chip {
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--d-base) ease, border-color var(--d-base) ease, transform var(--d-fast) var(--ease-out);
+}
+.retry-chip:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.58);
+  border-color: rgba(255, 255, 255, 0.42);
+}
+.retry-chip:disabled {
+  cursor: default;
+}
+.retry-icon.spinning {
+  animation: spin 0.7s linear infinite;
 }
 .online-chip {
   color: #a8f0b8;

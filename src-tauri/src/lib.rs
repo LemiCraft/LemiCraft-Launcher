@@ -77,6 +77,9 @@ async fn open_logs_window(app: tauri::AppHandle) -> Result<(), String> {
                     .title("Логи игры — LemiCraft")
                     .inner_size(640.0, 480.0)
                     .decorations(false);
+                // the webview is white until the page's styles load; the same colour as the main window
+                #[cfg(not(target_os = "macos"))]
+                let builder = builder.background_color(tauri::window::Color(20, 19, 23, 255));
                 #[cfg(target_os = "macos")]
                 let builder = builder.transparent(true).shadow(true);
                 builder.build().map_err(|err| err.to_string())?;

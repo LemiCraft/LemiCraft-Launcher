@@ -537,7 +537,7 @@ h2 {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, opacity 0.2s ease;
+  transition: background 0.15s ease, opacity 0.2s ease, transform var(--d-fast) var(--ease-out);
   min-height: 36px;
 }
 .check-btn.primary {

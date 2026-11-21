@@ -72,6 +72,7 @@ function modrinthUrl(entry) {
 
 function hideBrokenIcon(event) {
   event.target.style.display = 'none';
+  event.target.parentElement?.classList.add('no-icon');
 }
 
 async function openExternal(url) {
@@ -361,8 +362,8 @@ watch(
         <p class="sub">Опциональные клиентские моды — сервер работает и без них</p>
       </div>
       <button class="refresh" :disabled="refreshing || modsState.loading" @click="onRefresh">
-        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z"/></svg>
-        {{ refreshing ? 'Обновляю...' : 'Обновить' }}
+        <svg :class="{ spinning: refreshing || modsState.loading }" viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 4a8 8 0 1 0 7.75 6h-2.08A6 6 0 1 1 12 6V2l5 4-5 4V6Z"/></svg>
+        Обновить
       </button>
     </div>
 
@@ -492,17 +493,21 @@ watch(
           </button>
         </div>
 
-        <TransitionGroup tag="div" name="mod-card" class="mod-grid">
+        <!-- a category is a new grid: the old one fades, the new one comes with its cards one after another, nothing slides -->
+        <Transition name="grid-swap" mode="out-in">
+        <div :key="activeCategory" class="mod-grid">
           <article
-            v-for="entry in filteredCatalog"
+            v-for="(entry, i) in filteredCatalog"
             :key="entry.id"
             class="mod-card"
+            :style="{ '--i': Math.min(i, 14) }"
             :class="{ selected: isInstalled(entry), conflict: !isInstalled(entry) && conflictingNames(entry).length, busy: modsState.applying }"
             :title="conflictingNames(entry).length ? `Конфликт с: ${conflictingNames(entry).join(', ')}` : ''"
             @click="onToggleCard(entry)"
           >
             <div class="mod-card-head">
               <span class="mod-icon">
+                <span class="mod-initial" aria-hidden="true">{{ entry.name.charAt(0) }}</span>
                 <img :src="iconUrl(entry)" :alt="entry.name" loading="lazy" @error="hideBrokenIcon" />
               </span>
               <div class="mod-card-title">
@@ -512,12 +517,12 @@ watch(
                   <span v-if="entry.configs.length" class="badge configs">конфиг</span>
                   <span v-if="isInstalled(entry) && isPackOnly(entry.id)" class="badge pack-badge">из сборки</span>
                   <span v-if="!isInstalled(entry) && conflictingNames(entry).length" class="badge conflict-badge">конфликт</span>
-                </div>
-              </div>
-              <div class="mod-card-actions">
                 <button class="mod-link" title="Открыть на Modrinth" @click.stop="openExternal(modrinthUrl(entry))">
                   <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M14 3h7v7h-2V6.4l-9.3 9.3-1.4-1.4L17.6 5H14V3ZM5 5h6v2H5v12h12v-6h2v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z"/></svg>
                 </button>
+                </div>
+              </div>
+              <div class="mod-card-actions">
                 <span class="mod-check" :class="{ checked: isInstalled(entry) }">
                   <svg v-if="isInstalled(entry)" viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z"/></svg>
                 </span>
@@ -525,7 +530,8 @@ watch(
             </div>
             <p class="mod-desc">{{ entry.description }}</p>
           </article>
-        </TransitionGroup>
+        </div>
+        </Transition>
         <p v-if="filteredCatalog.length === 0 && !modsState.loading && !modsState.error" class="empty-state">
           {{ activeCategory === 'all' ? 'Каталог модов пока пуст' : 'В этой категории пока нет модов' }}
         </p>
@@ -630,7 +636,7 @@ watch(
   cursor: pointer;
   padding: 0 10px;
   border-radius: 8px;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, transform var(--d-fast) var(--ease-out);
   min-height: 28px;
 }
 .refresh:hover:not(:disabled) {
@@ -754,8 +760,9 @@ watch(
   }
 }
 
+/* the scroll column already puts 18px between blocks, so the heading takes less of its own */
 .catalog-title {
-  margin: 22px 0 12px;
+  margin: 6px 0 -6px;
   font-size: 17px;
   font-weight: 800;
   color: var(--text);
@@ -839,7 +846,7 @@ watch(
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background 0.15s ease, transform var(--d-fast) var(--ease-out);
   min-height: 36px;
   display: inline-flex;
   align-items: center;
@@ -948,9 +955,11 @@ watch(
   border-top: 1px solid var(--border);
 }
 .mrpack-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-faint);
 }
 .mrpack-preview {
   margin-top: 12px;
@@ -988,6 +997,7 @@ watch(
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
+  transition: transform var(--d-fast) var(--ease-out);
 }
 .pick-btn:disabled {
   opacity: 0.6;
@@ -1007,6 +1017,7 @@ watch(
 }
 
 .category-filter {
+  margin-bottom: -4px;
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
@@ -1022,7 +1033,7 @@ watch(
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease, transform var(--d-fast) var(--ease-out);
 }
 .cat-btn:hover {
   background: var(--surface-hover);
@@ -1032,6 +1043,10 @@ watch(
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-text-on);
+}
+/* a ring of the colour of the fill would read as a double outline */
+.cat-btn.active:focus-visible {
+  outline-color: rgba(255, 255, 255, 0.85);
 }
 
 .empty-state {
@@ -1052,28 +1067,37 @@ watch(
   flex-shrink: 0;
 }
 
-.mod-card-enter-active,
-.mod-card-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+.grid-swap-enter-active {
+  transition: opacity var(--d-base) ease;
 }
-.mod-card-move {
-  transition: transform 0.2s ease;
+.grid-swap-leave-active {
+  transition: opacity var(--d-fast) ease;
 }
-.mod-card-enter-from,
-.mod-card-leave-to {
+.grid-swap-enter-from,
+.grid-swap-leave-to {
   opacity: 0;
+}
+/* the cards come one after another; "backwards" so that the fill does not hold the opacity of a conflict or a busy card */
+.mod-card {
+  animation: mod-in var(--d-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 16ms);
+}
+@keyframes mod-in {
+  from { opacity: 0; transform: translateY(8px); }
 }
 
 .mod-card {
+  position: relative;
   padding: 12px;
   border-radius: var(--radius-md);
   background: var(--card);
   border: 1px solid var(--border);
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+  transition: border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease, box-shadow var(--d-base) ease;
 }
 .mod-card:hover {
   border-color: var(--text-faint);
+  box-shadow: 0 10px 22px -14px rgba(0, 0, 0, 0.7);
 }
 .mod-card.selected {
   border-color: var(--accent);
@@ -1106,6 +1130,23 @@ watch(
   align-items: center;
   justify-content: center;
 }
+.mod-icon {
+  position: relative;
+}
+.mod-initial {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.mod-icon.no-icon .mod-initial {
+  display: flex;
+}
 .mod-icon img {
   width: 100%;
   height: 100%;
@@ -1125,8 +1166,10 @@ watch(
   font-weight: 700;
   color: var(--text);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: break-word;
 }
 
 .mod-badges {
@@ -1168,7 +1211,11 @@ watch(
   gap: 6px;
 }
 
+/* in the corner of the card, so that it takes no room from the name and the badges */
 .mod-link {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1179,7 +1226,17 @@ watch(
   background: none;
   color: var(--text-faint);
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  opacity: 0;
+  transition: background 0.15s ease, color 0.15s ease, opacity var(--d-base) ease;
+}
+.mod-card:hover .mod-link,
+.mod-link:focus-visible {
+  opacity: 1;
+}
+@media (hover: none) {
+  .mod-link {
+    opacity: 1;
+  }
 }
 .mod-link:hover {
   background: var(--surface-2);
@@ -1202,8 +1259,16 @@ watch(
   background: var(--accent);
   border-color: var(--accent);
 }
+.mod-check svg {
+  animation: check-pop var(--d-base) var(--ease-out);
+}
+@keyframes check-pop {
+  from { opacity: 0; transform: scale(0.5); }
+  to { opacity: 1; transform: scale(1); }
+}
 
 .mod-desc {
+  padding-right: 22px;
   font-size: 12px;
   color: var(--text-muted);
   line-height: 1.4;
@@ -1213,11 +1278,4 @@ watch(
   overflow: hidden;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .mod-card-enter-active,
-  .mod-card-leave-active,
-  .mod-card-move {
-    transition: none;
-  }
-}
 </style>

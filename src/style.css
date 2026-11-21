@@ -50,6 +50,12 @@
   --event-soft: rgba(167, 139, 250, 0.14);
 
   --radius-lg: 20px;
+  /* one motion language: two curves and three durations */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-move: cubic-bezier(0.65, 0, 0.35, 1);
+  --d-fast: 120ms;
+  --d-base: 200ms;
+  --d-slow: 320ms;
   --radius-md: 14px;
   --radius-sm: 9px;
 
@@ -164,4 +170,30 @@ input:focus-visible,
 
 .mono {
   font-family: var(--font-mono);
+}
+
+/* the same press on every button */
+:is(.secondary-btn, .pick-btn, .upload-btn, .browse-btn, .check-btn, .refresh, .retry, .cat-btn, .retry-chip, .ping-chip):active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --d-fast: 0ms;
+    --d-base: 0ms;
+    --d-slow: 0ms;
+  }
+}
+
+/* the refresh button keeps its text; only its icon turns while it works */
+.refresh svg.spinning {
+  animation: refresh-spin 0.8s linear infinite;
+}
+@keyframes refresh-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .refresh svg.spinning {
+    animation-duration: 2.4s;
+  }
 }
